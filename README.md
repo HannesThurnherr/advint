@@ -1,6 +1,6 @@
-# Advint
+# Advint: Adversarial Interpretability with Sparse Autoencoders
 
-This repository contains code for training and evaluating a sparse autoencoder model on tokenized text data. The model architecture, training scripts, and dataset handling are designed to be lightweight and portable for easy setup on different environments, including clusters.
+Advint tests if transformers can restructure their internal representations to become harder (or easier) to interpret. Using sparse autoencoders (SAEs), this framework adversarially trains language models (LMs) to reduce interpretability while retaining performance. The project explores if models can “hide” information from SAEs, impacting their effectiveness in interpretability tasks. This method scales from small models to larger ones like the 33M Tiny Stories model, with ongoing work to test across even bigger models. Advint aims to inform AI alignment and transparency by revealing if models can control how understandable their internals are.
 
 
 ## Getting Started
