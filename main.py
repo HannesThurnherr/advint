@@ -14,7 +14,7 @@ from tiny_story_data import load_tiny_stories_data
 from torch.cuda.amp import GradScaler
 
 print("packages imported")
-
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # %%
 
 # Load model
@@ -111,8 +111,8 @@ print("starting SAE training")
 # Training Loop
 SAE.train()
 model.eval()
-for epoch in tqdm(range(num_epochs), desc="Epochs"):
-    
+for epoch in range(num_epochs):
+    print(f"Epoch {epoch}")
     cumulative_sae_recon_loss, cumulative_sae_sparsity_loss = 0, 0
     cumulative_batch_time = 0  # To accumulate batch processing times
 
