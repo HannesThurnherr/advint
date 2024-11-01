@@ -14,14 +14,13 @@ def load_tiny_stories_data():
     model = transformer_lens.HookedTransformer.from_pretrained("tiny-stories-33M")
     print("Model loaded")
 
-    # Check for MPS device
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
         x = torch.ones(1, device=device)
-        print("Using MPS device:", x)
+        print(x)
     else:
         device = torch.device("cpu")
-        print("MPS device not found. Using CPU.")
+        print("Cuda device not found. Using CPU.")
 
     # Move model to the appropriate device
     model.to(device)
