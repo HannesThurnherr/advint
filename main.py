@@ -25,7 +25,7 @@ cuda_mem_in_use = []
 # %%
 
 # Load model
-model = transformer_lens.HookedTransformer.from_pretrained("tiny-stories-33M")
+model = transformer_lens.HookedTransformer.from_pretrained("tiny-stories-8M")
 print("model loaded")
 # %%
 # Check for cuda device
@@ -68,17 +68,17 @@ train_dataset = TensorDataset(train_tokens['input_ids'], train_tokens['attention
 val_dataset = TensorDataset(val_tokens['input_ids'], val_tokens['attention_mask'])
 
 
-
+resid_dim = activations[activation_key].shape[-1]
 # DataLoader settings
 # DataLoader settings
-batch_size = 32  # Set your desired batch size
+batch_size = 128  # Set your desired batch size
 num_workers = 16  # Adjust this based on your system's CPU capacity
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
 
 # Define your SAE and training components
-latent_dim = 768 * 10  # 8192
-embedding_dim = 768  # Replace with actual embedding dim from the model
+latent_dim = resid_dim * 10  # 8192
+embedding_dim = resid_dim  # Replace with actual embedding dim from the model
 
 SAE = TopKSparseAutoencoder(input_dim=embedding_dim, latent_dim=latent_dim).to(device)
 sae_optimizer = Adam(SAE.parameters(), lr=5e-4)
@@ -161,7 +161,8 @@ for epoch in range(num_epochs):
         # Track batch time
         batch_time = time.time() - start_time
         cumulative_batch_time += batch_time
-
+        if batch_idx>1000:
+            break
         # Print progress every 100 batches
         if batch_idx % 100 == 0 and batch_idx > 0:
             avg_time_per_batch = cumulative_batch_time / (batch_idx + 1)
@@ -181,11 +182,11 @@ for epoch in range(num_epochs):
     avg_recon_loss = cumulative_sae_recon_loss / len(train_loader)
     avg_sparsity_loss = cumulative_sae_sparsity_loss / len(train_loader)
     print(f"Epoch {epoch + 1}/{num_epochs} - Avg Recon Loss: {avg_recon_loss:.4f}, Avg Sparsity Loss: {avg_sparsity_loss:.4f}")
-
+    
 print("SAE Training Complete!")
 
 # Remove hook after training
-hook.remove()
+#hook.remove()
 
 # %%$
 torch.cuda.empty_cache()
@@ -193,12 +194,12 @@ torch.cuda.empty_cache()
 
 model.train()
 SAE.train()
-
+batch_size = 32
 train_loader_2 = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 val_loader_2 = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
 
 
-optimizer = optim.Adam(model.parameters(), lr=5e-3)
+optimizer = optim.Adam(model.parameters(), lr=5e-5)
 sae_optimizer = optim.Adam(SAE.parameters(), lr=5e-4)
 
 criterion = nn.CrossEntropyLoss()
@@ -286,7 +287,7 @@ for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(train_loader_2), de
     with torch.no_grad():
         predictions = torch.argmax(logits_reshaped, dim=-1) 
         correct = (predictions == targets_reshaped).float()    
-        attention_mask_reshaped = attention_mask[:, 1:].reshape(-1) 
+        attention_mask_reshaped = attention_mask[:, 1:].reshape(-1).to(device) 
         correct *= attention_mask_reshaped
         accuracy = correct.sum() / attention_mask_reshaped.sum()
 
