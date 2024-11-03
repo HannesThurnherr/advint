@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.optim import Adam
 from torch.nn import MSELoss, L1Loss
+import torch.nn as nn
 from SAE import TopKSparseAutoencoder
 import transformer_lens
 from torch.cuda.amp import autocast
@@ -12,9 +13,14 @@ import os
 import matplotlib.pyplot as plt
 from tiny_story_data import load_tiny_stories_data
 from torch.cuda.amp import GradScaler
+import torch.optim as optim
+import torch.nn.utils as utils
+
+lambda_adv = 0.2
 
 print("packages imported")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 # %%
 
 # Load model
@@ -54,7 +60,8 @@ else:
     print("data loaded")
 
 
-# %%
+# %%¨
+torch.cuda.empty_cache()
 # Convert tokenized tensors to TensorDataset
 train_dataset = TensorDataset(train_tokens['input_ids'], train_tokens['attention_mask'])
 val_dataset = TensorDataset(val_tokens['input_ids'], val_tokens['attention_mask'])
@@ -88,7 +95,8 @@ activation_key = f'blocks.{2}.hook_resid_post'  # Layer 2 residual stream
 scaler = GradScaler()
 
 sae_losses = []
-
+SAE.train()
+model.eval()
 
 # %%
 
@@ -109,8 +117,7 @@ hook = model.get_submodule(activation_key).register_forward_hook(activation_hook
 print("starting SAE training")
 # Training Loop
 # Training Loop
-SAE.train()
-model.eval()
+
 for epoch in range(num_epochs):
     print(f"Epoch {epoch}")
     cumulative_sae_recon_loss, cumulative_sae_sparsity_loss = 0, 0
@@ -124,12 +131,12 @@ for epoch in range(num_epochs):
 
         sae_optimizer.zero_grad()
         
-        with torch.no_grad():
-            _ = model(input_ids)  # Forward pass to trigger hook
-
+        
         # SAE forward pass
         # SAE forward pass
         with autocast():
+            with torch.no_grad():
+                _ = model(input_ids)  # Forward pass to trigger hook
             reconstructed, latent = SAE(activations)
             
             # Loss calculation
@@ -155,14 +162,19 @@ for epoch in range(num_epochs):
         cumulative_batch_time += batch_time
 
         # Print progress every 100 batches
-        if batch_idx % 100 == 0 and batch_idx > 0:
+        if batch_idx % 10 == 0 and batch_idx > 0:
             avg_time_per_batch = cumulative_batch_time / (batch_idx + 1)
             print(f"Batch {batch_idx + 1}/{len(train_loader)}: "
                   f"Recon Loss={sae_reconstruction_loss.item():.4f}, "
                   f"Sparsity Loss={sae_sparsity_loss.item():.4f}, "
                   f"Avg Time per Batch={avg_time_per_batch:.4f}s")
             plt.plot(sae_losses)
+            plt.yscale("log")
+            plt.title("SAE loss")
+            plt.xlabel("Batch")
+            plt.ylabel("MSE loss")
             plt.show()
+            break
 
     # Average epoch losses
     avg_recon_loss = cumulative_sae_recon_loss / len(train_loader)
@@ -174,8 +186,168 @@ print("SAE Training Complete!")
 # Remove hook after training
 hook.remove()
 
+# %%$
+torch.cuda.empty_cache()
+
+
+model.train()
+SAE.train()
+batch_size = 16
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
+
+
+optimizer = optim.Adam(model.parameters(), lr=5e-3)
+sae_optimizer = optim.Adam(SAE.parameters(), lr=5e-4)
+
+criterion = nn.CrossEntropyLoss()
+
+# Initialize cumulative metrics for epoch
+cumulative_ce_loss = 0
+cumulative_combined_loss = 0
+cumulative_accuracy = 0
+cumulative_sae_recon_loss = 0
+cumulative_sae_sparsity_loss = 0
+batch_count = 0  # To keep track of batches for plotting
+batch_losses = []
+batch_ce_losses = []
+batch_combined_losses = []
+batch_accuracies = []
+batch_sae_recon_losses = []
+batch_sae_sparsity_losses = []
+batch_sae_total_losses = []
+
+
+# %%
+
+
+for batch_idx, batch in enumerate(train_loader):
+
+
+
+    inputs, targets = batch  # Adjust based on your DataLoader's output
+    inputs = inputs.to(device)
+    targets = targets.to(device)
+
+    optimizer.zero_grad()
+    sae_optimizer.zero_grad()
+
+    with autocast():
+
+    
+        logits = model(input_ids)  # Forward pass to trigger hook
+        reconstructed, latent = SAE(activations)
+        # Loss calculation
+        sae_reconstruction_loss = mse_loss_fn(reconstructed, activations)
+        sae_sparsity_loss = l1_loss_fn(latent, torch.zeros_like(latent))
+        total_sae_loss = sae_reconstruction_loss
+
+        logits_reshaped = logits.reshape(-1, logits.size(-1))  # Shape: [batch_size * seq_length, vocab_size]
+        targets_reshaped = targets.view(-1)  # Shape: [batch_size * seq_length]
+        ce_loss = criterion(logits_reshaped, targets_reshaped)
+
+        combined_loss = ce_loss - lambda_adv * torch.log(sae_reconstruction_loss)
+        #combined_loss = kl_loss + lambda_adv * (1/sae_reconstruction_loss)
+    # 1. Freeze SAE's parameters to prevent them from being updated during combined_loss backward
+    for param in SAE.parameters():
+        param.requires_grad = False
+
+    # 2. Backward pass for combined_loss (updates main model only)
+    scaler.scale(combined_loss).backward(retain_graph=True)
+
+    # 3. Unfreeze SAE's parameters to allow updates from total_sae_loss
+    for param in SAE.parameters():
+        param.requires_grad = True
+
+    # 4. Backward pass for total_sae_loss (updates SAE only)
+    scaler.scale(total_sae_loss).backward()
+
+
+    # 6. Clip gradients for the main model
+    utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+
+    # 7. Clip gradients for the SAE
+    utils.clip_grad_norm_(SAE.parameters(), max_grad_norm)
+
+    # 6. Normalize decoder weights
+    SAE.decoder.weight.data = SAE.decoder.weight.data / SAE.decoder.weight.data.norm(dim=1, keepdim=True)
+
+
+    # 5. Update optimizers
+    scaler.step(optimizer)
+    scaler.step(sae_optimizer)
+
+    # 6. Update the scaler
+    scaler.update()
+
+    # Calculate accuracy for the batch
+    with torch.no_grad():
+        predictions = torch.argmax(logits, dim=-1)  # Shape: [batch_size, seq_length]
+        correct = (predictions == targets).float()
+        mask = (targets != train_dataset.word2idx['<PAD>']).float()
+        correct *= mask
+        accuracy = correct.sum() / mask.sum()
+
+    # Accumulate metrics
+    cumulative_ce_loss += ce_loss.item()
+    cumulative_combined_loss += combined_loss.item()
+    cumulative_accuracy += accuracy.item()
+    cumulative_sae_recon_loss += sae_reconstruction_loss.item()
+    cumulative_sae_sparsity_loss += sae_sparsity_loss.item()
+    batch_count += 1
+
+    # Store batch metrics for plotting
+    batch_losses.append(combined_loss.item())
+    batch_ce_losses.append(ce_loss.item())
+    batch_combined_losses.append(combined_loss.item())
+    batch_accuracies.append(accuracy.item())
+    batch_sae_recon_losses.append(sae_reconstruction_loss.item())
+    batch_sae_sparsity_losses.append(sae_sparsity_loss.item())
+    batch_sae_total_losses.append(total_sae_loss.item())
+
+
+
+
+
+print("Training Complete!")
+
 
 
 
 
 # %%
+# Subplot 1: Combined Loss (log scale)
+# Plot Main Model's Loss and Accuracy
+fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+axs[0].plot(batch_combined_losses, label='Combined Loss')
+axs[0].plot(batch_ce_losses, label='CE Loss')
+axs[0].set_yscale('log')
+axs[0].set_xlabel('Batch')
+axs[0].set_ylabel('Loss (Log Scale)')
+axs[0].set_title(f'Combined Loss ')
+axs[0].legend()
+axs[0].grid(True)
+
+# Subplot 2: Accuracy
+axs[1].plot([acc * 100 for acc in batch_accuracies], label='Accuracy (%)', color='green')
+axs[1].set_xlabel('Batch')
+axs[1].set_ylabel('Accuracy (%)')
+axs[1].set_title(f'Accuracy ')
+axs[1].legend()
+axs[1].grid(True)
+
+plt.tight_layout()
+plt.savefig(f"training_graph_model_adv_{lambda_adv}.pdf")
+plt.show()
+# Plot SAE's Reconstruction, Sparsity, and Total Loss
+plt.figure(figsize=(18, 5))
+
+plt.plot(batch_sae_total_losses, label='Total SAE Loss', color='red')
+plt.xlabel('Batch')
+plt.ylabel('Loss')
+plt.title(f'Loss SAE')
+plt.yscale("log")
+plt.legend()
+plt.grid(True)
+plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
+plt.show()
