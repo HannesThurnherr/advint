@@ -21,6 +21,7 @@ lambda_adv = 0.2
 print("packages imported")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+cuda_mem_in_use = []
 # %%
 
 # Load model
@@ -70,7 +71,7 @@ val_dataset = TensorDataset(val_tokens['input_ids'], val_tokens['attention_mask'
 
 # DataLoader settings
 # DataLoader settings
-batch_size = 128  # Set your desired batch size
+batch_size = 32  # Set your desired batch size
 num_workers = 16  # Adjust this based on your system's CPU capacity
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
@@ -128,7 +129,7 @@ for epoch in range(num_epochs):
         # Model forward pass
         start_time = time.time()
         input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
-
+        
         sae_optimizer.zero_grad()
         
         
@@ -162,7 +163,7 @@ for epoch in range(num_epochs):
         cumulative_batch_time += batch_time
 
         # Print progress every 100 batches
-        if batch_idx % 10 == 0 and batch_idx > 0:
+        if batch_idx % 100 == 0 and batch_idx > 0:
             avg_time_per_batch = cumulative_batch_time / (batch_idx + 1)
             print(f"Batch {batch_idx + 1}/{len(train_loader)}: "
                   f"Recon Loss={sae_reconstruction_loss.item():.4f}, "
@@ -174,7 +175,7 @@ for epoch in range(num_epochs):
             plt.xlabel("Batch")
             plt.ylabel("MSE loss")
             plt.show()
-            break
+            #break
 
     # Average epoch losses
     avg_recon_loss = cumulative_sae_recon_loss / len(train_loader)
@@ -192,9 +193,9 @@ torch.cuda.empty_cache()
 
 model.train()
 SAE.train()
-batch_size = 16
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
+
+train_loader_2 = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+val_loader_2 = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
 
 
 optimizer = optim.Adam(model.parameters(), lr=5e-3)
@@ -221,27 +222,28 @@ batch_sae_total_losses = []
 # %%
 
 
-for batch_idx, batch in enumerate(train_loader):
+for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(train_loader_2), desc=f"Epoch 1", total=len(train_loader_2), leave=False):
+    
 
-
-
-    inputs, targets = batch  # Adjust based on your DataLoader's output
+    inputs = input_ids[:, :-1]  # Use all tokens except the last one as input
+    targets = input_ids[:, 1:]
     inputs = inputs.to(device)
     targets = targets.to(device)
-
+    
     optimizer.zero_grad()
     sae_optimizer.zero_grad()
-
+    
     with autocast():
 
-    
-        logits = model(input_ids)  # Forward pass to trigger hook
+        
+        logits = model(inputs)  # Forward pass to trigger hook
+
         reconstructed, latent = SAE(activations)
         # Loss calculation
         sae_reconstruction_loss = mse_loss_fn(reconstructed, activations)
         sae_sparsity_loss = l1_loss_fn(latent, torch.zeros_like(latent))
         total_sae_loss = sae_reconstruction_loss
-
+        
         logits_reshaped = logits.reshape(-1, logits.size(-1))  # Shape: [batch_size * seq_length, vocab_size]
         targets_reshaped = targets.view(-1)  # Shape: [batch_size * seq_length]
         ce_loss = criterion(logits_reshaped, targets_reshaped)
@@ -249,6 +251,7 @@ for batch_idx, batch in enumerate(train_loader):
         combined_loss = ce_loss - lambda_adv * torch.log(sae_reconstruction_loss)
         #combined_loss = kl_loss + lambda_adv * (1/sae_reconstruction_loss)
     # 1. Freeze SAE's parameters to prevent them from being updated during combined_loss backward
+    
     for param in SAE.parameters():
         param.requires_grad = False
 
@@ -280,13 +283,13 @@ for batch_idx, batch in enumerate(train_loader):
     # 6. Update the scaler
     scaler.update()
 
-    # Calculate accuracy for the batch
     with torch.no_grad():
-        predictions = torch.argmax(logits, dim=-1)  # Shape: [batch_size, seq_length]
-        correct = (predictions == targets).float()
-        mask = (targets != train_dataset.word2idx['<PAD>']).float()
-        correct *= mask
-        accuracy = correct.sum() / mask.sum()
+        predictions = torch.argmax(logits_reshaped, dim=-1) 
+        correct = (predictions == targets_reshaped).float()    
+        attention_mask_reshaped = attention_mask[:, 1:].reshape(-1) 
+        correct *= attention_mask_reshaped
+        accuracy = correct.sum() / attention_mask_reshaped.sum()
+
 
     # Accumulate metrics
     cumulative_ce_loss += ce_loss.item()
@@ -305,7 +308,40 @@ for batch_idx, batch in enumerate(train_loader):
     batch_sae_sparsity_losses.append(sae_sparsity_loss.item())
     batch_sae_total_losses.append(total_sae_loss.item())
 
+    if batch_idx % 100 == 0:
+        fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+        axs[0].plot(batch_combined_losses, label='Combined Loss')
+        axs[0].plot(batch_ce_losses, label='CE Loss')
+        axs[0].set_yscale('log')
+        axs[0].set_xlabel('Batch')
+        axs[0].set_ylabel('Loss (Log Scale)')
+        axs[0].set_title(f'Combined Loss ')
+        axs[0].legend()
+        axs[0].grid(True)
 
+        # Subplot 2: Accuracy
+        axs[1].plot([acc * 100 for acc in batch_accuracies], label='Accuracy (%)', color='green')
+        axs[1].set_xlabel('Batch')
+        axs[1].set_ylabel('Accuracy (%)')
+        axs[1].set_title(f'Accuracy ')
+        axs[1].legend()
+        axs[1].grid(True)
+
+        plt.tight_layout()
+        plt.savefig(f"training_graph_model_adv_{lambda_adv}.pdf")
+        plt.show()
+        # Plot SAE's Reconstruction, Sparsity, and Total Loss
+        plt.figure(figsize=(18, 5))
+
+        plt.plot(batch_sae_total_losses, label='Total SAE Loss', color='red')
+        plt.xlabel('Batch')
+        plt.ylabel('Loss')
+        plt.title(f'Loss SAE')
+        plt.yscale("log")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
+        plt.show()
 
 
 
@@ -351,3 +387,5 @@ plt.legend()
 plt.grid(True)
 plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
 plt.show()
+
+# %%
