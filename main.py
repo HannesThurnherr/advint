@@ -509,7 +509,16 @@ output_dir = "saved_models"
 os.makedirs(output_dir, exist_ok=True)
 
 # Save the main model (adversarially trained model)
-model_path = os.path.join(output_dir, f"adversarially_traine_model_{len(batch_losses)}_batches.pth")
+model_path = os.path.join(output_dir, f"adversarially_trained_model.pth")
 torch.save(model.state_dict(), model_path)
 print(f"Main model saved at {model_path}")
+
+output_dir = "saved_SAEs"
+os.makedirs(output_dir, exist_ok=True)
+
+# Save the main model (adversarially trained model)
+sae_path = os.path.join(output_dir, f"adv_model_sae.pth")
+torch.save(new_SAE.state_dict(), sae_path)
+print(f"SAE saved at {sae_path}")
 # %%
+model.eval()

@@ -98,7 +98,7 @@ mse_loss = nn.MSELoss()
 diff_total = None
 # %%
 # Training loop
-epochs = 7
+epochs = 5
 for epoch in range(epochs):
     total_loss = 0
     print(f"epoch {epoch}")
@@ -117,11 +117,12 @@ for epoch in range(epochs):
         total_loss += loss.item()
 
         # Calculate the absolute difference between activations
-        abs_diff = torch.abs(reconstructed_non_adv - non_adv)
-        if diff_total == None:
-            diff_total = abs_diff
-        else:
-            diff_total += abs_diff
+        if epoch == 0:
+            abs_diff = torch.abs(reconstructed_non_adv - non_adv).detach().cpu()
+            if diff_total == None:
+                diff_total = abs_diff
+            else:
+                diff_total += abs_diff
 
     print(f"Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(activation_loader):.4f}")
 
@@ -198,4 +199,12 @@ indices = (diagonal_elements < 0.8).nonzero()
 print(indices)
 # %%
 print("diff_total shape:", diff_total.shape)
+avg1 = torch.mean(diff_total, dim = 0)
+print("avg1 shape:", avg1.shape)
+avg2 = torch.mean(avg1, dim = 0)
+print("avg2 shape:", avg2.shape)
+# %%
+plt.figure(figsize=(8, 6))
+plt.imshow(avg2.broadcast_to(100,768))
+plt.show()
 # %%

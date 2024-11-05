@@ -17,10 +17,9 @@ class TopKSparseAutoencoder(nn.Module):
         latent = self.encoder(x)
 
         # Zero out all but the top-k activations
-        top_k_values, _ = torch.topk(latent, self.k, dim=1)
-        mask = latent >= top_k_values[:, -1].unsqueeze(1)
+        top_k_values, _ = torch.topk(latent, self.k, dim=-1)
+        mask = latent >= top_k_values[..., -1].unsqueeze(-1)
         latent_k_sparse = latent * mask.float()
-
         # Decode the sparsified latent representation
         reconstructed = self.decoder(latent_k_sparse)
         return reconstructed, latent_k_sparse
