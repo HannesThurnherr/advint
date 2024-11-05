@@ -78,9 +78,7 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_work
 
 # Define your SAE and training components
 latent_dim = resid_dim * 10  # 8192
-embedding_dim = resid_dim  # Replace with actual embedding dim from the model
-
-SAE = TopKSparseAutoencoder(input_dim=embedding_dim, latent_dim=latent_dim).to(device)
+SAE = TopKSparseAutoencoder(input_dim=resid_dim, latent_dim=latent_dim).to(device)
 sae_optimizer = Adam(SAE.parameters(), lr=5e-4)
 
 # Loss functions
@@ -398,7 +396,7 @@ train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, nu
 val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
 
 
-new_SAE = TopKSparseAutoencoder(input_dim=embedding_dim, latent_dim=latent_dim).to(device)
+new_SAE = TopKSparseAutoencoder(input_dim=resid_dim, latent_dim=latent_dim).to(device)
 new_sae_optimizer = Adam(new_SAE.parameters(), lr=5e-4)
 
 # Loss functions
@@ -521,4 +519,4 @@ sae_path = os.path.join(output_dir, f"adv_model_sae.pth")
 torch.save(new_SAE.state_dict(), sae_path)
 print(f"SAE saved at {sae_path}")
 # %%
-model.eval()
+
