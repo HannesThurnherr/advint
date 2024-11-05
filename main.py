@@ -161,7 +161,7 @@ for epoch in range(num_epochs):
         # Track batch time
         batch_time = time.time() - start_time
         cumulative_batch_time += batch_time
-        if batch_idx>10000:
+        if batch_idx>1000:
             break
         # Print progress every 100 batches
         if batch_idx % 100 == 0 and batch_idx > 0:
@@ -343,7 +343,7 @@ for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(train_loader_2), de
         plt.grid(True)
         plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
         plt.show()
-    if batch_idx>10000:
+    if batch_idx>1000:
             break
 
 
@@ -476,7 +476,7 @@ for epoch in range(num_epochs):
         # Track batch time
         batch_time = time.time() - start_time
         cumulative_batch_time += batch_time
-        if batch_idx>10000:
+        if batch_idx>1000:
             break
         # Print progress every 100 batches
         if batch_idx % 100 == 0 and batch_idx > 0:
@@ -501,9 +501,7 @@ for epoch in range(num_epochs):
     print(f"Epoch {epoch + 1}/{num_epochs} - Avg Recon Loss: {avg_recon_loss:.4f}, Avg Sparsity Loss: {avg_sparsity_loss:.4f}")
     
 print("SAE Training Complete!")
-# %%
-# Save the main model (adversarially trained model)
-torch.save(model, f"adversarially_traine_model_{len(batch_losses)}_batches.pth")# %%
+
 
 # %%
 # Define paths to save the models
@@ -511,7 +509,7 @@ output_dir = "saved_models"
 os.makedirs(output_dir, exist_ok=True)
 
 # Save the main model (adversarially trained model)
-model_path = os.path.join(output_dir, "adversarially_trained_model.pth")
+model_path = os.path.join(output_dir, f"adversarially_traine_model_{len(batch_losses)}_batches.pth")
 torch.save(model.state_dict(), model_path)
 print(f"Main model saved at {model_path}")
 # %%

@@ -7,10 +7,16 @@ from tqdm import tqdm
 from transformer_lens import HookedTransformer
 import transformer_lens
 import numpy as np
+import numpy as np
+import matplotlib.pyplot as plt
+# %%
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+import os
+print(os.getcwd())
 # %%
 # Load the adversarially trained model
 adversarial_model = transformer_lens.HookedTransformer.from_pretrained("tiny-stories-33M")
-adversarial_model.load_state_dict(torch.load("../saved_models/adversarially_trained_model.pth"))
+adversarial_model.load_state_dict(torch.load("saved_models/adversarially_trained_model.pth"))
 print("adversarial_model loaded from checkpoint.")
 unaugmented_model = HookedTransformer.from_pretrained("tiny-stories-33M")
 
@@ -20,8 +26,8 @@ adversarial_model.to(device)
 unaugmented_model.to(device)
 
 # Load the dataset (assuming Tiny Stories data tokens are pre-saved)
-train_tokens = torch.load("../train_tokens.pt")
-val_tokens = torch.load("../val_tokens.pt")
+train_tokens = torch.load("train_tokens.pt")
+val_tokens = torch.load("val_tokens.pt")
 train_dataset = TensorDataset(train_tokens['input_ids'], train_tokens['attention_mask'])
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
 
@@ -55,7 +61,7 @@ with torch.no_grad():
         # Forward pass for unaugmented model
         unaugmented_model(input_ids)
 
-        if batch_idx > 100:
+        if batch_idx > 500:
             break
 # %%
 # Stack activations and align dataset
@@ -81,14 +87,18 @@ class AffineTransform(nn.Module):
 
     def forward(self, x):
         return self.linear(x)
+    
+
 
 # Initialize affine transformation and optimizer
 affine_transform = AffineTransform(input_dim=activation_adv_tensor.shape[-1]).to(device)
+weight_matrix = affine_transform.linear.weight.detach().cpu().numpy()
 optimizer = Adam(affine_transform.parameters(), lr=1e-3)
 mse_loss = nn.MSELoss()
+diff_total = None
 # %%
 # Training loop
-epochs = 10
+epochs = 7
 for epoch in range(epochs):
     total_loss = 0
     print(f"epoch {epoch}")
@@ -106,6 +116,13 @@ for epoch in range(epochs):
 
         total_loss += loss.item()
 
+        # Calculate the absolute difference between activations
+        abs_diff = torch.abs(reconstructed_non_adv - non_adv)
+        if diff_total == None:
+            diff_total = abs_diff
+        else:
+            diff_total += abs_diff
+
     print(f"Epoch [{epoch+1}/{epochs}], Loss: {total_loss/len(activation_loader):.4f}")
 
 print("Affine transformation training complete.")
@@ -114,38 +131,39 @@ print("Affine transformation training complete.")
 # transformed_activations = affine_transform(activation_adv_tensor).detach()
 # You can now run your SAE on `transformed_activations` to see if the features are interpretable.
 # %%
-import matplotlib.pyplot as plt
+
 
 # Extract weights from the linear layer
-weight_matrix = affine_transform.linear.weight.detach().cpu().numpy()
+# Extract weights from the linear layer (using torch)
+weight_matrix = affine_transform.linear.weight.detach().cpu().numpy()  # Leave out  for now
 
-# Plot the weight matrix
+
+# Plot using matplotlib
 plt.figure(figsize=(6, 6))
 plt.imshow(weight_matrix, cmap="viridis")
 plt.colorbar(label="Weight magnitude")
-plt.title("Affine Transformation Weight Matrix")
+plt.title("Affine Transformation Weight Matrix with Diagonal Set to 0")
 plt.xlabel("Input features")
 plt.ylabel("Output features")
 plt.show()
 
 # %%
 
-import numpy as np
 
 # Extract weights from the linear layer
 weight_matrix = affine_transform.linear.weight.detach().cpu().numpy()
 
-# Set the diagonal to 0
-np.fill_diagonal(weight_matrix, 0)
-
-# Plot the modified weight matrix
+# Plot the modified weight matrix with a 0-tolerant log
 plt.figure(figsize=(6, 6))
-plt.imshow(weight_matrix**4, cmap="viridis")
-plt.colorbar(label="Weight magnitude")
+l = np.abs(weight_matrix)
+plt.imshow(np.log(l), cmap="viridis")
+plt.colorbar(label="Log-Scaled Absolute Weight Magnitude")
 plt.title("Affine Transformation Weight Matrix with Diagonal Set to 0")
 plt.xlabel("Input features")
 plt.ylabel("Output features")
 plt.show()
+
+
 # %%
 # Flatten the weight matrix to get all weights in a 1D array
 weights = weight_matrix.flatten()
@@ -159,9 +177,25 @@ plt.yscale("log")
 plt.title("Distribution of Affine Transformation Weights")
 plt.show()
 # %%
+weight_matrix = affine_transform.linear.weight.detach().cpu().numpy()
+diagonal_elements = np.diag(weight_matrix)
+print("Diagonal elements of the weight matrix:", diagonal_elements)
+
+plt.figure(figsize=(8, 6))
+plt.hist(diagonal_elements, bins=20, color="blue", edgecolor="black", alpha=0.7)
+plt.xlabel("Weight value")
+plt.ylabel("Frequency")
+plt.yscale("log")
+plt.title("Distribution of Affine Transformation Diagonal Weights")
+plt.show()
 
 
 
-
-
-
+# %%
+print(diagonal_elements.shape)
+# %%
+indices = (diagonal_elements < 0.8).nonzero()
+print(indices)
+# %%
+print("diff_total shape:", diff_total.shape)
+# %%
