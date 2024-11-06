@@ -88,6 +88,7 @@ max_grad_norm = 1.0  # Gradient clipping value
 
 # Training SAE
 num_epochs = 1
+
 activation_key = f'blocks.{2}.hook_resid_post'  # Layer 2 residual stream
 
 # Initialize GradScaler
@@ -97,6 +98,7 @@ sae_losses = []
 SAE.train()
 model.eval()
 
+load_sae = False
 # %%
 
 # Define hook function to capture activations
@@ -115,9 +117,8 @@ hook = model.get_submodule(activation_key).register_forward_hook(activation_hook
 # %%
 print("starting SAE training")
 # Training Loop
-# Training Loop
 
-for epoch in range(num_epochs):
+for epoch in range(num_epochs if not load_sae else 0):
     print(f"Epoch {epoch}")
     cumulative_sae_recon_loss, cumulative_sae_sparsity_loss = 0, 0
     cumulative_batch_time = 0  # To accumulate batch processing times
@@ -159,7 +160,7 @@ for epoch in range(num_epochs):
         # Track batch time
         batch_time = time.time() - start_time
         cumulative_batch_time += batch_time
-        if batch_idx>1000:
+        if batch_idx>5000:
             break
         # Print progress every 100 batches
         if batch_idx % 100 == 0 and batch_idx > 0:
@@ -180,8 +181,20 @@ for epoch in range(num_epochs):
     avg_recon_loss = cumulative_sae_recon_loss / len(train_loader)
     avg_sparsity_loss = cumulative_sae_sparsity_loss / len(train_loader)
     print(f"Epoch {epoch + 1}/{num_epochs} - Avg Recon Loss: {avg_recon_loss:.4f}, Avg Sparsity Loss: {avg_sparsity_loss:.4f}")
-    
+
+if load_sae: 
+    SAE.load_state_dict(torch.load("saved_SAEs/model_sae.pth"))
+
 print("SAE Training Complete!")
+
+# %%
+output_dir = "saved_SAEs"
+os.makedirs(output_dir, exist_ok=True)
+
+# Save the main model (adversarially trained model)
+sae_path = os.path.join(output_dir, f"model_sae.pth")
+torch.save(SAE.state_dict(), sae_path)
+print(f"SAE saved at {sae_path}")
 
 # Remove hook after training
 #hook.remove()
@@ -341,14 +354,21 @@ for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(train_loader_2), de
         plt.grid(True)
         plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
         plt.show()
-    if batch_idx>1000:
+    if batch_idx>5000:
             break
 
 
 print("Training Complete!")
 
+# %%
+# save model
+output_dir = "saved_models"
+os.makedirs(output_dir, exist_ok=True)
 
-
+# Save the main model (adversarially trained model)
+model_path = os.path.join(output_dir, f"adversarially_trained_model.pth")
+torch.save(model.state_dict(), model_path)
+print(f"Main model saved at {model_path}")
 
 
 # %%
@@ -474,7 +494,7 @@ for epoch in range(num_epochs):
         # Track batch time
         batch_time = time.time() - start_time
         cumulative_batch_time += batch_time
-        if batch_idx>1000:
+        if batch_idx>5000:
             break
         # Print progress every 100 batches
         if batch_idx % 100 == 0 and batch_idx > 0:
@@ -491,7 +511,7 @@ for epoch in range(num_epochs):
             plt.ylabel("MSE loss")
             plt.legend()
             plt.show()
-            #break
+            #break  
 
     # Average epoch losses
     avg_recon_loss = cumulative_sae_recon_loss / len(train_loader)
@@ -503,13 +523,7 @@ print("SAE Training Complete!")
 
 # %%
 # Define paths to save the models
-output_dir = "saved_models"
-os.makedirs(output_dir, exist_ok=True)
 
-# Save the main model (adversarially trained model)
-model_path = os.path.join(output_dir, f"adversarially_trained_model.pth")
-torch.save(model.state_dict(), model_path)
-print(f"Main model saved at {model_path}")
 
 output_dir = "saved_SAEs"
 os.makedirs(output_dir, exist_ok=True)
@@ -520,3 +534,40 @@ torch.save(new_SAE.state_dict(), sae_path)
 print(f"SAE saved at {sae_path}")
 # %%
 
+from huggingface_hub import HfApi, HfFolder, Repository
+import os
+
+# Set up your access token
+HfFolder.save_token("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")
+
+# Initialize the API
+api = HfApi()
+
+# Define the repository name (replace with your desired name)
+repo_name = "hannesthu/advint_models_2"
+api.create_repo(repo_id=repo_name, private=True)
+# Check if repo exists, if not, create it
+try:
+    api.repo_create(repo_name, private=True)  # Set private=False if you want a public repo
+except Exception as e:
+    print("Repo already exists or another error occurred:", e)
+
+# Clone the repo locally
+repo = Repository(local_dir="./huggingface_repo", clone_from=repo_name)
+
+# Define the directories to upload
+directories = ["saved_SAEs", "saved_models"]
+
+# Copy all saved files into the local repo directory
+for directory in directories:
+    for file_name in os.listdir(directory):
+        full_file_path = os.path.join(directory, file_name)
+        if os.path.isfile(full_file_path):
+            os.system(f"cp {full_file_path} ./huggingface_repo")
+
+# Add, commit, and push files
+repo.git_add(".")
+repo.git_commit("Upload adversarially trained model and SAE files")
+repo.git_push()
+print(f"Files uploaded to Hugging Face at {repo_name}")
+# %%
