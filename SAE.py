@@ -1,3 +1,4 @@
+# %%
 import torch
 import torch.nn as nn
 
@@ -23,3 +24,5 @@ class TopKSparseAutoencoder(nn.Module):
         # Decode the sparsified latent representation
         reconstructed = self.decoder(latent_k_sparse)
         return reconstructed, latent_k_sparse
+
+# %%
