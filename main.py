@@ -16,7 +16,7 @@ from torch.cuda.amp import GradScaler
 import torch.optim as optim
 import torch.nn.utils as utils
 
-lambda_adv = 0.2
+lambda_adv = 0.0
 
 print("packages imported")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -98,7 +98,7 @@ sae_losses = []
 SAE.train()
 model.eval()
 
-load_sae = False
+load_sae = True
 # %%
 
 # Define hook function to capture activations
@@ -192,9 +192,10 @@ output_dir = "saved_SAEs"
 os.makedirs(output_dir, exist_ok=True)
 
 # Save the main model (adversarially trained model)
-sae_path = os.path.join(output_dir, f"model_sae.pth")
-torch.save(SAE.state_dict(), sae_path)
-print(f"SAE saved at {sae_path}")
+if not load_sae:
+    sae_path = os.path.join(output_dir, f"model_sae.pth")
+    torch.save(SAE.state_dict(), sae_path)
+    print(f"SAE saved at {sae_path}")
 
 # Remove hook after training
 #hook.remove()
