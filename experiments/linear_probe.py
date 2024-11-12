@@ -17,10 +17,11 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 torch.manual_seed(42)
 np.random.seed(42)
 
-
+load_adv_model = False
 # Load the model (assuming you have the adversarially trained model)
 model = transformer_lens.HookedTransformer.from_pretrained("tiny-stories-33M")
-#model.load_state_dict(torch.load("../saved_models/adversarially_trained_model.pth"))
+if load_adv_model:
+    model.load_state_dict(torch.load("../saved_models/adversarially_trained_model.pth"))
 print("Model loaded from checkpoint.")
 
 # Check for CUDA availability
@@ -125,10 +126,14 @@ plt.plot(losses)
 plt.show()
 # %%
 import pickle
-with open("losses_adv_model_sa_probe.pkl", "wb") as f:
+
+file_name = f"losses_{"adv" if load_adv_model else "normal"}_model_sa_probe.pkl"
+
+with open(file_name, "wb") as f:
         pickle.dump(losses, f)
 # %%
-with open("losses_normal_model_sa_probe.pkl", "rb") as f:
+
+with open(f"losses_{"adv" if not load_adv_model else "normal"}_model_sa_probe.pkl", "rb") as f:
         old_losses = pickle.load( f)
 
 plt.plot(losses)
