@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 # Ensure tokenizers are not parallelized
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Check for CUDA availability
+# Check for CUDA availability   
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Sentiment analysis setup using NLTK's VADER
@@ -41,7 +41,7 @@ def run_experiment(load_adv_model, run_number):
     # Load the model
     model = HookedTransformer.from_pretrained("tiny-stories-33M")
     if load_adv_model:
-        model.load_state_dict(torch.load("../saved_models/adversarially_trained_model.pth"))
+        model.load_state_dict(torch.load("../saved_models/symbiotically_trained_model.pth"))
     print(f"Model loaded. Adversarial model: {load_adv_model}")
     model.to(device)
     
@@ -208,8 +208,8 @@ def run_experiment(load_adv_model, run_number):
     }
 
     # Save results
-    model_type = "adv" if load_adv_model else "normal"
-    file_name = f"metrics_{model_type}_model_run{run_number}.pkl"
+    model_type = "symb" if load_adv_model else "normal"
+    file_name = f"../experiments/sentiment_probe_results/metrics_{model_type}_model_run{run_number}.pkl"
     with open(file_name, "wb") as f:
         pickle.dump(results, f)
     print(f"Metrics saved to {file_name}")
@@ -219,9 +219,9 @@ def run_experiment(load_adv_model, run_number):
 # %%
 # Results dictionary to store average metrics across runs
 overall_results = {'normal': [], 'adv': []}
-for load_adv_model in [False, True]:
+for load_adv_model in [True]:
     model_type = "adv" if load_adv_model else "normal"
-    for run_number in range(1, 11):  # 10 runs
+    for run_number in range(4, 11):  # 10 runs
         print(f"\nStarting run {run_number} for model '{model_type}'")
         avg_train_metrics, avg_val_metrics = run_experiment(load_adv_model, run_number)
         overall_results[model_type].append({
@@ -231,31 +231,31 @@ for load_adv_model in [False, True]:
         print(f"Run {run_number}, Model '{model_type}' completed.")
         print(f"Average Training Metrics: {avg_train_metrics}")
         print(f"Average Validation Metrics: {avg_val_metrics}")
+
+# %%
 # Save the overall results
-with open("experiment_overall_results.pkl", "wb") as f:
+with open("../experiments/sentiment_probe_results/experiment_overall_results.pkl", "wb") as f:
     pickle.dump(overall_results, f)
 print("\nExperiment completed. Overall results saved to 'experiment_overall_results.pkl'")
 
 # %%
-# %%
-
-# %%
-
 
 # Load the aggregated results
-with open("experiment_overall_results.pkl", "rb") as f:
+with open("../experiments/sentiment_probe_results/experiment_overall_results.pkl", "rb") as f:
     overall_results = pickle.load(f)
 
 # Function to extract metric values for box plot
 def extract_metrics_for_boxplot(overall_results, metric):
     normal_metrics = [run['avg_val_metrics'][metric] for run in overall_results['normal']]
     adv_metrics = [run['avg_val_metrics'][metric] for run in overall_results['adv']]
+    print(normal_metrics)
+    print(adv_metrics)
     return normal_metrics, adv_metrics
 
 # Visualization function for box plots
 def plot_boxplot(metric_name, normal_values, adv_values):
     plt.figure()
-    plt.boxplot([normal_values, adv_values], labels=["Normal Model", "Adversarially trained Model"])
+    plt.boxplot([normal_values, adv_values], labels=["Normal Model", "Adversarialy trained Model"])
     plt.ylabel(metric_name)
     plt.title(f"{metric_name} of the SC Linear Probe Distribution")
     plt.show()
@@ -265,4 +265,36 @@ metrics = ["mse", "mae", "r2"]
 for metric in metrics:
     normal_values, adv_values = extract_metrics_for_boxplot(overall_results, metric)
     plot_boxplot(metric.upper(), normal_values, adv_values)
+# %%
+# Directory containing the result files
+results_dir = '../experiments/sentiment_probe_results/'
+
+# Initialize dictionaries to store MAE values for each model type
+mae_values = {
+    'adv': [],
+    'normal': [],
+    'symb': []
+}
+
+# Load all result files and store validation MAE in the respective dictionary
+for filename in os.listdir(results_dir):
+    if filename.endswith(".pkl"):
+        file_path = os.path.join(results_dir, filename)
+        with open(file_path, "rb") as file:
+            data = pickle.load(file)
+            # Determine model type based on filename
+            if "adv" in filename:
+                mae_values['adv'].extend(data['val_metrics']['mse'])
+            elif "normal" in filename:
+                mae_values['normal'].extend(data['val_metrics']['mse'])
+            elif "symb" in filename:
+                mae_values['symb'].extend(data['val_metrics']['mse'])
+
+# Create the box plot for validation MAE for the three model types
+plt.figure(figsize=(10, 6))
+plt.boxplot([mae_values['adv'], mae_values['normal'], mae_values['symb']], labels=['Adversarial', 'Normal', 'Symbiotic'])
+plt.title("Validation MAE for Different Model Types")
+plt.ylabel("MAE")
+plt.xlabel("Model Type")
+plt.show()
 # %%

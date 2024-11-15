@@ -16,7 +16,9 @@ from torch.cuda.amp import GradScaler
 import torch.optim as optim
 import torch.nn.utils as utils
 
-lambda_adv = 0.0
+lambda_adv = -0.1   
+load_sae = True
+
 
 print("packages imported")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -98,7 +100,6 @@ sae_losses = []
 SAE.train()
 model.eval()
 
-load_sae = True
 # %%
 
 # Define hook function to capture activations
@@ -214,7 +215,9 @@ val_loader_2 = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_wo
 optimizer = optim.Adam(model.parameters(), lr=5e-5)
 sae_optimizer = optim.Adam(SAE.parameters(), lr=5e-4)
 
-criterion = nn.CrossEntropyLoss()
+padding_idx = model.tokenizer.pad_token_id  # Replace with your actual padding token ID
+criterion = nn.CrossEntropyLoss(ignore_index=padding_idx)
+
 
 # Initialize cumulative metrics for epoch
 cumulative_ce_loss = 0
@@ -368,9 +371,15 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Save the main model (adversarially trained model)
 model_path = os.path.join(output_dir, f"adversarially_trained_model.pth")
+if lambda_adv < 0:
+    model_path = os.path.join(output_dir, f"symbiotically_trained_model.pth")
 torch.save(model.state_dict(), model_path)
 print(f"Main model saved at {model_path}")
 
+if lambda_adv < 0:
+    sae_path = os.path.join("saved_SAEs", f"symbiotically_trained_SAE.pth")
+    torch.save(model.state_dict(), sae_path)
+    print(f"Symbiotically trained SAE saved at {sae_path}")
 
 # %%
 # Subplot 1: Combined Loss (log scale)
@@ -528,7 +537,7 @@ print("SAE Training Complete!")
 
 output_dir = "saved_SAEs"
 os.makedirs(output_dir, exist_ok=True)
-
+xx
 # Save the main model (adversarially trained model)
 sae_path = os.path.join(output_dir, f"adv_model_sae.pth")
 torch.save(new_SAE.state_dict(), sae_path)

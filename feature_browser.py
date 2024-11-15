@@ -4,7 +4,7 @@ import os
 import sys
 
 # Change directory to project root
-os.chdir('/root/advint/advint')
+os.chdir('/root/advint')
 # Add the new working directory to sys.path
 sys.path.append(os.getcwd())
 # %%
@@ -27,20 +27,20 @@ import torch.nn.utils as utils
 import heapq  # Priority queue for efficient top-k tracking
 import pickle  # For saving the results to a file
 
-load_feature_dict = False
 
-
+load_feature_dict = True
+load_adv_model = True
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # %%
-#configuring device
-if not load_feature_dict:
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        x = torch.ones(1, device=device)
-        print(x)
-    else:
-        device = torch.device("cpu")
-        print("Cuda device not found. Using CPU.")
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    x = torch.ones(1, device=device)
+    print(x)
+else:
+    device = torch.device("cpu")
+    print("Cuda device not found. Using CPU.")
+
 
 # %%
 #loading tokens
@@ -69,13 +69,19 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_work
 
 # get the model and the SAE
 model = transformer_lens.HookedTransformer.from_pretrained("tiny-stories-33M")
+if load_adv_model:
+        model.load_state_dict(torch.load("saved_models/symbiotically_trained_model.pth"))
+    
 #model.load_state_dict(torch.load("saved_models/adversarially_trained_model.pth"))
 logits, activations = model.run_with_cache(["this", "is", "a", "test"])
 activation_key = f'blocks.{2}.hook_resid_post'
 resid_dim = activations[activation_key].shape[-1]
 latent_dim = resid_dim * 10  # 8192
 SAE = TopKSparseAutoencoder(input_dim=resid_dim, latent_dim=latent_dim).to(device)
-SAE.load_state_dict(torch.load("saved_SAEs/model_sae.pth"))
+if load_adv_model:
+    SAE.load_state_dict(torch.load("saved_SAEs/adv_model_sae.pth"))
+else:
+    SAE.load_state_dict(torch.load("saved_SAEs/model_sae.pth"))
 model.to(device)
 SAE.to(device)
 # %%
@@ -103,25 +109,7 @@ if not load_feature_dict:
     # Register hook
     hook = model.get_submodule(activation_key).register_forward_hook(activation_hook)
 
-# %%
-if not load_feature_dict:
-    print("starting SAE training")
-    # Progress bar for each batch within the epoch
-    for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(val_loader), desc=f"Getting feature activations", total=len(val_loader), leave=False):
-        # Model forward pass
-        start_time = time.time()
-        input_ids, attention_mask = input_ids.to(device), attention_mask.to(device)
-        
 
-        with autocast():
-            with torch.no_grad():
-                _ = model(input_ids)  # Forward pass to trigger hook
-                reconstructed, latent = SAE(activations)
-        
-        features = top_k_indices = torch.topk(latent, k=25, dim=-1).indices
-        
-        if batch_idx>10:
-                break
 
 
 # %%
@@ -167,20 +155,32 @@ if not load_feature_dict:
                 # Update dictionary for each top-activated feature
                 for idx, feature_idx in enumerate(top_k_indices):
                     update_top_activations(int(feature_idx), input_id, float(top_k_values[idx]))
-        if batch_idx>9:
+        if batch_idx>30:
             break
 
 
 
     # Save results to file
-    with open("top_activations_per_feature.pkl", "wb") as f:
-        pickle.dump(top_activations_per_feature, f)
+    if load_adv_model:
+        with open("top_activations_per_feature_adv_model.pkl", "wb") as f:
+            pickle.dump(top_activations_per_feature, f)
+    else:
+        with open("top_activations_per_feature_def_model.pkl", "wb") as f:
+            pickle.dump(top_activations_per_feature, f)
 
     print("Top activations saved.")
 
 else:
-    with open("top_activations_per_feature.pkl", "rb") as f:
-        top_activations_per_feature = pickle.load(f)
+    if load_adv_model:
+        with open("top_activations_per_feature_adv_model.pkl", "rb") as f:
+            top_activations_per_feature = pickle.load(f)
+    else:
+        with open("top_activations_per_feature_def_model.pkl", "rb") as f:
+            top_activations_per_feature = pickle.load(f)
+# %%
+# Save results to file
+with open("top_activations_per_feature_adv_model.pkl", "wb") as f:
+    pickle.dump(top_activations_per_feature, f)
 # %%
 def get_top_inputs_for_feature(feature_idx, token_ids):
     """
@@ -213,10 +213,10 @@ def get_top_inputs_for_feature(feature_idx, token_ids):
     return top_inputs_text
 
 # Example usage
-for feature_idx in range(700,800):
+for feature_idx in range(1000,1200):
     top_inputs = get_top_inputs_for_feature(feature_idx, val_tokens['input_ids'])
     if len(top_inputs)>0:
-        if top_inputs[0][0]>1:
+        #if top_inputs[0][0]>1:
             print(f"Top inputs for feature {feature_idx}:")
             for i in top_inputs[:20]:
                 print(i) 
