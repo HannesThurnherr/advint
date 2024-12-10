@@ -1,4 +1,8 @@
 # %%
+import sys
+os.chdir('/root/advint')
+# Add the new working directory to sys.path
+sys.path.append(os.getcwd())
 from tqdm import tqdm
 import time
 import torch
@@ -16,10 +20,14 @@ from torch.cuda.amp import GradScaler
 import torch.optim as optim
 import torch.nn.utils as utils
 
-lambda_adv = -0.1   
-load_sae = True
+# %%
+lambda_adv = 0.2 
+# %%
+load_sae = False
 
-
+os.chdir('/root/advint')
+# Add the new working directory to sys.path
+sys.path.append(os.getcwd())
 print("packages imported")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -537,7 +545,7 @@ print("SAE Training Complete!")
 
 output_dir = "saved_SAEs"
 os.makedirs(output_dir, exist_ok=True)
-xx
+
 # Save the main model (adversarially trained model)
 sae_path = os.path.join(output_dir, f"adv_model_sae.pth")
 torch.save(new_SAE.state_dict(), sae_path)
