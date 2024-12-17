@@ -601,3 +601,171 @@ explained_variance = (S ** 2) / (S ** 2).sum()
 variance_first_component = explained_variance[0]
 print(f"First component explains {variance_first_component * 100:.2f}% of variance")
 # %%
+# Project reconstruction losses into PCA basis
+def compute_pca_basis_losses(per_dimension_losses, V):
+    """
+    Project per-dimension losses into PCA basis
+    Args:
+        per_dimension_losses: tensor of shape [n_samples, n_dims]
+        V: PCA basis vectors from SVD (V matrix)
+    Returns:
+        Losses in PCA basis
+    """
+    # Ensure we're working with the right shapes
+    if torch.is_tensor(per_dimension_losses):
+        losses = per_dimension_losses.cpu()
+    else:
+        losses = torch.tensor(per_dimension_losses)
+        
+    if torch.is_tensor(V):
+        basis = V.cpu()
+    else:
+        basis = torch.tensor(V)
+    
+    # Project losses into PCA basis
+    pca_basis_losses = torch.matmul(losses.unsqueeze(0), basis).squeeze(0)
+    return pca_basis_losses
+
+# Stack losses and compute mean for both models
+avg_dim_loss_adv = torch.stack([r['per_dimension_loss'] for r in running_results['adversarial']]).mean(0).cpu()
+avg_dim_loss_normal = torch.stack([r['per_dimension_loss'] for r in running_results['normal']]).mean(0).cpu()
+
+# Project losses into PCA basis
+pca_loss_adv = compute_pca_basis_losses(avg_dim_loss_adv, V)
+pca_loss_normal = compute_pca_basis_losses(avg_dim_loss_normal, V)
+
+# Create visualization
+plt.figure(figsize=(12, 6))
+
+# Plot losses in PCA basis
+plt.plot(pca_loss_adv, label='Adversarial Model', alpha=0.6)
+plt.plot(pca_loss_normal, label='Normal Model', alpha=0.6)
+
+# Mark top 10 principal components
+top_10_indices = torch.arange(10)
+plt.vlines(top_10_indices, ymin=0, 
+          ymax=max(pca_loss_adv.max(), pca_loss_normal.max()),
+          colors='r', linestyles='dashed', alpha=0.3, 
+          label='Top 10 Principal Components')
+
+plt.yscale('log')
+plt.xlabel('Principal Component Index')
+plt.ylabel('Average Loss (in PCA basis)')
+plt.title('Per-Component Reconstruction Loss Comparison (PCA Basis)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Add explained variance annotation for first few components
+for i in range(5):
+    plt.text(i, plt.ylim()[0] * 1.1, 
+             f'{explained_variance[i]*100:.1f}%', 
+             rotation=45, 
+             horizontalalignment='right')
+
+plt.tight_layout()
+plt.show()
+
+# Print some statistics
+print("\nLoss Statistics in PCA Basis:")
+print(f"Adversarial Model:")
+print(f"  Top 10 components average loss: {pca_loss_adv[:10].mean():.4f}")
+print(f"  Other components average loss: {pca_loss_adv[10:].mean():.4f}")
+print(f"Normal Model:")
+print(f"  Top 10 components average loss: {pca_loss_normal[:10].mean():.4f}")
+print(f"  Other components average loss: {pca_loss_normal[10:].mean():.4f}")
+#%%
+# Project reconstruction losses into PCA basis
+# Project reconstruction losses into PCA basis
+def compute_pca_basis_losses(per_dimension_losses, V):
+    """
+    Project per-dimension losses into PCA basis
+    Args:
+        per_dimension_losses: tensor of shape [n_samples, n_dims]
+        V: PCA basis vectors from SVD (V matrix)
+    Returns:
+        Losses in PCA basis
+    """
+    # Ensure we're working with the right shapes
+    if torch.is_tensor(per_dimension_losses):
+        losses = per_dimension_losses.cpu()
+    else:
+        losses = torch.tensor(losses)
+        
+    if torch.is_tensor(V):
+        basis = V.cpu()
+    else:
+        basis = torch.tensor(V)
+    
+    # Project losses into PCA basis
+    pca_basis_losses = torch.matmul(losses.unsqueeze(0), basis).squeeze(0)
+    return pca_basis_losses
+
+# Stack losses and compute mean for both models
+avg_dim_loss_adv = torch.stack([r['per_dimension_loss'] for r in running_results['adversarial']]).mean(0).cpu()
+avg_dim_loss_normal = torch.stack([r['per_dimension_loss'] for r in running_results['normal']]).mean(0).cpu()
+
+# Project losses into PCA basis
+pca_loss_adv = compute_pca_basis_losses(avg_dim_loss_adv, V)
+pca_loss_normal = compute_pca_basis_losses(avg_dim_loss_normal, V)
+
+# Get sorting indices based on adversarial model's losses
+sort_indices = torch.argsort(pca_loss_adv, descending=True)
+
+# Sort everything
+pca_loss_adv_sorted = pca_loss_adv[sort_indices]
+pca_loss_normal_sorted = pca_loss_normal[sort_indices]
+explained_variance_sorted = explained_variance[sort_indices]
+
+# Create visualization
+plt.figure(figsize=(15, 8))
+
+# Plot sorted losses in PCA basis
+x = np.arange(len(pca_loss_adv))
+plt.plot(x, pca_loss_adv_sorted, label='Adversarial Model', alpha=0.8)
+plt.plot(x, pca_loss_normal_sorted, label='Normal Model', alpha=0.8)
+
+# Mark original top 10 PCA components
+top_10_positions = torch.where(sort_indices < 10)[0]
+plt.vlines(top_10_positions, ymin=0, 
+          ymax=max(pca_loss_adv_sorted.max(), pca_loss_normal_sorted.max()),
+          colors='r', linestyles='dashed', alpha=0.3, 
+          label='Original Top 10 PCs')
+
+plt.yscale('log')
+plt.xlabel('Component Index (Sorted by Adversarial Model Loss)')
+plt.ylabel('Average Loss (in PCA basis)')
+plt.title('Per-Component Reconstruction Loss Comparison (PCA Basis)\nSorted by Adversarial Model Loss')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+# Add explained variance annotation for original top PCs
+for pos in top_10_positions[:5]:  # Annotate first 5 original PCs
+    orig_idx = sort_indices[pos]
+    plt.text(pos, plt.ylim()[0] * 1.1, 
+             f'PC{orig_idx}\n{explained_variance[orig_idx]*100:.1f}%', 
+             rotation=45, 
+             horizontalalignment='right')
+
+plt.tight_layout()
+plt.show()
+
+# Print statistics
+print("\nLoss Statistics in Sorted PCA Basis:")
+print(f"Adversarial Model:")
+print(f"  Top 10 components average loss: {pca_loss_adv_sorted[:10].mean():.4f}")
+print(f"  Other components average loss: {pca_loss_adv_sorted[10:].mean():.4f}")
+print(f"Normal Model:")
+print(f"  Top 10 components average loss: {pca_loss_normal_sorted[:10].mean():.4f}")
+print(f"  Other components average loss: {pca_loss_normal_sorted[10:].mean():.4f}")
+
+print("\nOriginal PCA Components in Top Losses:")
+for i, idx in enumerate(sort_indices[:10]):
+    print(f"Loss rank {i+1}: PC{idx} (explains {explained_variance[idx]*100:.2f}% variance)")
+
+# Compute ratio of adversarial to normal loss for top components
+ratios = pca_loss_adv_sorted[:10] / pca_loss_normal_sorted[:10]
+print("\nRatio of Adversarial to Normal Loss for Top 10 Components:")
+for i, ratio in enumerate(ratios):
+    orig_idx = sort_indices[i]
+    print(f"Component {i+1} (PC{orig_idx}): {ratio:.2f}x")
+# %%
