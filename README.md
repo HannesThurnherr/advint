@@ -28,5 +28,7 @@ source myenv/bin/activate  # On Windows use `myenv\Scripts\activate`
 pip install -r requirements.txt
 
 # 4. Run the Code
-python main.py!
+python adversarial_training.py!
+
+# after this you will have an adversarially trained model in the "saved_models" folder and both SAEs (for the original and the adversarially trained model) in the "saved_SAEs" folder.
 ```
