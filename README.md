@@ -30,5 +30,5 @@ pip install -r requirements.txt
 # 4. Run the Code
 python adversarial_training.py!
 
-# after this you will have an adversarially trained model in the "saved_models" folder and both SAEs (for the original and the adversarially trained model) in the "saved_SAEs" folder.
 ```
+After this you will have an adversarially trained model in the "saved_models" folder and both SAEs (for the original and the adversarially trained model) in the "saved_SAEs" folder. From here you can run any of the experiments in the experiments folder.
