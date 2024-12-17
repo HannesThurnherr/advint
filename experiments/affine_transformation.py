@@ -367,3 +367,237 @@ plt.title('Per-Dimension Reconstruction Loss Comparison')
 plt.legend()
 plt.show()
  # %%
+def compute_activation_statistics(activations, indices_of_interest):
+    """
+    Compute average magnitude and variance statistics for specific axes vs others
+    Args:
+        activations: tensor of shape [batch, seq_len, hidden_dim]
+        indices_of_interest: indices of axes we want to analyze separately
+    """
+    # Convert to numpy for easier stats computation
+    if torch.is_tensor(activations):
+        activations = activations.detach().cpu().numpy()
+    
+    # Create mask for other indices
+    all_indices = np.arange(activations.shape[-1])
+    other_indices = np.array([i for i in all_indices if i not in indices_of_interest])
+    
+    # Compute statistics for interesting axes
+    interesting_activations = activations[..., indices_of_interest]
+    interesting_stats = {
+        'mean_magnitude': np.mean(np.abs(interesting_activations)),
+        'std_magnitude': np.std(np.abs(interesting_activations)),
+        'mean_variance': np.mean(np.var(interesting_activations, axis=(0, 1))),
+        'std_variance': np.std(np.var(interesting_activations, axis=(0, 1)))
+    }
+    
+    # Compute statistics for other axes
+    other_activations = activations[..., other_indices]
+    other_stats = {
+        'mean_magnitude': np.mean(np.abs(other_activations)),
+        'std_magnitude': np.std(np.abs(other_activations)),
+        'mean_variance': np.mean(np.var(other_activations, axis=(0, 1))),
+        'std_variance': np.std(np.var(other_activations, axis=(0, 1)))
+    }
+    
+    return interesting_stats, other_stats
+
+# Storage for activation statistics
+adv_stats = {'interesting': [], 'other': []}
+normal_stats = {'interesting': [], 'other': []}
+
+print("Computing activation statistics...")
+with torch.no_grad():
+    for batch_idx, (adv_act, non_adv_act) in enumerate(tqdm(activation_loader)):
+        # Get statistics for both models
+        adv_interesting, adv_other = compute_activation_statistics(adv_act, lowest_indices)
+        normal_interesting, normal_other = compute_activation_statistics(non_adv_act, lowest_indices)
+        
+        # Store results
+        adv_stats['interesting'].append(adv_interesting)
+        adv_stats['other'].append(adv_other)
+        normal_stats['interesting'].append(normal_interesting)
+        normal_stats['other'].append(normal_other)
+        
+        if batch_idx > 100:  # Limit number of batches for memory efficiency
+            break
+
+# Aggregate statistics
+def aggregate_stats(stats_list):
+    """Compute mean and std of statistics across batches"""
+    return {
+        'mean_magnitude': np.mean([s['mean_magnitude'] for s in stats_list]),
+        'std_magnitude': np.std([s['mean_magnitude'] for s in stats_list]),
+        'mean_variance': np.mean([s['mean_variance'] for s in stats_list]),
+        'std_variance': np.std([s['mean_variance'] for s in stats_list])
+    }
+
+# Compute final statistics
+final_stats = {
+    'adversarial': {
+        'interesting': aggregate_stats(adv_stats['interesting']),
+        'other': aggregate_stats(adv_stats['other'])
+    },
+    'normal': {
+        'interesting': aggregate_stats(normal_stats['interesting']),
+        'other': aggregate_stats(normal_stats['other'])
+    }
+}
+
+# Print results
+print("\nActivation Statistics Summary:")
+for model_type in ['adversarial', 'normal']:
+    print(f"\n{model_type.capitalize()} Model:")
+    print("Interesting Axes:")
+    stats = final_stats[model_type]['interesting']
+    print(f"  Average magnitude: {stats['mean_magnitude']:.4f} ± {stats['std_magnitude']:.4f}")
+    print(f"  Average variance: {stats['mean_variance']:.4f} ± {stats['std_variance']:.4f}")
+    
+    print("Other Axes:")
+    stats = final_stats[model_type]['other']
+    print(f"  Average magnitude: {stats['mean_magnitude']:.4f} ± {stats['std_magnitude']:.4f}")
+    print(f"  Average variance: {stats['mean_variance']:.4f} ± {stats['std_variance']:.4f}")
+
+# Create visualization of the statistics
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 2, 1)
+models = ['Adversarial', 'Normal']
+x = np.arange(len(models))
+width = 0.35
+
+interesting_magnitudes = [final_stats['adversarial']['interesting']['mean_magnitude'],
+                        final_stats['normal']['interesting']['mean_magnitude']]
+other_magnitudes = [final_stats['adversarial']['other']['mean_magnitude'],
+                   final_stats['normal']['other']['mean_magnitude']]
+
+plt.bar(x - width/2, interesting_magnitudes, width, label='Interesting Axes', color='blue', alpha=0.6)
+plt.bar(x + width/2, other_magnitudes, width, label='Other Axes', color='red', alpha=0.6)
+plt.ylabel('Average Magnitude')
+plt.title('Activation Magnitudes')
+plt.xticks(x, models)
+plt.legend()
+
+plt.subplot(1, 2, 2)
+interesting_variances = [final_stats['adversarial']['interesting']['mean_variance'],
+                        final_stats['normal']['interesting']['mean_variance']]
+other_variances = [final_stats['adversarial']['other']['mean_variance'],
+                   final_stats['normal']['other']['mean_variance']]
+
+plt.bar(x - width/2, interesting_variances, width, label='Interesting Axes', color='blue', alpha=0.6)
+plt.bar(x + width/2, other_variances, width, label='Other Axes', color='red', alpha=0.6)
+plt.ylabel('Average Variance')
+plt.title('Activation Variances')
+plt.xticks(x, models)
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# %%
+def collect_activations(model, loader, device, num_batches=100):
+    activations = []
+    
+    # Define hook function
+    def activation_hook(module, input, output):
+        activations.append(output.detach())
+    
+    # Register hook
+    activation_key = f'blocks.{2}.hook_resid_post'
+    hook = model.get_submodule(activation_key).register_forward_hook(activation_hook)
+    
+    # Collect activations
+    model.eval()
+    with torch.no_grad():
+        for batch_idx, (input_ids, attention_mask) in enumerate(tqdm(loader, desc="Collecting activations")):
+            if batch_idx >= num_batches:
+                break
+            input_ids = input_ids.to(device)
+            _ = model(input_ids)
+    
+    # Remove hook
+    hook.remove()
+    
+    # Stack all activations
+    return torch.cat(activations, dim=0)
+
+
+val_dataset = TensorDataset(val_tokens['input_ids'], val_tokens['attention_mask'])
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+# Collect activations from both models
+print("Collecting activations from normal model...")
+normal_activations = collect_activations(unaugmented_model, val_loader, device)
+print("Collecting activations from adversarial model...")
+adv_activations = collect_activations(adversarial_model, val_loader, device)
+
+# Compute differences
+print("Computing differences...")
+activation_differences = adv_activations - normal_activations
+
+# Reshape for PCA
+diff_reshaped = activation_differences.reshape(-1, activation_differences.shape[-1])
+print(f"Activation differences shape: {diff_reshaped.shape}")
+
+# Center the data
+diff_mean = torch.mean(diff_reshaped, dim=0)
+diff_centered = diff_reshaped - diff_mean
+
+# Compute SVD (equivalent to PCA)
+print("Computing SVD...")
+U, S, V = torch.svd(diff_centered)
+
+# Calculate explained variance ratios
+explained_variance = (S ** 2) / (S ** 2).sum()
+cumulative_variance = torch.cumsum(explained_variance, 0)
+
+# Convert to numpy for plotting
+explained_variance = explained_variance.cpu().numpy()
+cumulative_variance = cumulative_variance.cpu().numpy()
+
+# Plot explained variance ratio (log scale)
+plt.figure(figsize=(12, 6))
+plt.plot(np.arange(1, len(explained_variance) + 1), 
+         explained_variance, 'b-', label='Individual')
+plt.plot(np.arange(1, len(explained_variance) + 1),
+         cumulative_variance, 'r-', label='Cumulative')
+plt.yscale('log')
+plt.xlabel('Principal Component')
+plt.ylabel('Explained Variance Ratio (log scale)')
+plt.title('PCA Components Importance in Activation Differences')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Print summary statistics
+num_components_90 = torch.where(torch.tensor(cumulative_variance) >= 0.9)[0][0].item() + 1
+num_components_99 = torch.where(torch.tensor(cumulative_variance) >= 0.99)[0][0].item() + 1
+
+print(f"\nSummary Statistics:")
+print(f"Number of components explaining 90% of variance: {num_components_90}")
+print(f"Number of components explaining 99% of variance: {num_components_99}")
+print(f"Top 5 components explain {explained_variance[:5].sum()*100:.2f}% of variance")
+
+# Plot histogram of component contributions
+plt.figure(figsize=(12, 6))
+plt.hist(explained_variance, bins=50, log=True)
+plt.xlabel('Explained Variance Ratio')
+plt.ylabel('Count (log scale)')
+plt.title('Distribution of PCA Component Importance')
+plt.grid(True)
+plt.show()
+
+# Additional visualization: Scree plot (elbow plot)
+plt.figure(figsize=(12, 6))
+plt.plot(np.arange(1, 51), explained_variance[:50], 'bo-')  # Plot first 50 components
+plt.yscale('log')
+plt.xlabel('Principal Component')
+plt.ylabel('Explained Variance Ratio (log scale)')
+plt.title('Scree Plot of Top 50 Components')
+plt.grid(True)
+plt.show()
+# %%
+# Given S is the singular values from the SVD
+explained_variance = (S ** 2) / (S ** 2).sum()
+variance_first_component = explained_variance[0]
+print(f"First component explains {variance_first_component * 100:.2f}% of variance")
+# %%

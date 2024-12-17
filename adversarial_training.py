@@ -352,7 +352,7 @@ for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(train_loader_2), de
         axs[1].grid(True)
 
         plt.tight_layout()
-        plt.savefig(f"training_graph_model_adv_{lambda_adv}.pdf")
+        
         plt.show()
         # Plot SAE's Reconstruction, Sparsity, and Total Loss
         plt.figure(figsize=(18, 5))
@@ -364,7 +364,7 @@ for batch_idx, (input_ids, attention_mask) in tqdm(enumerate(train_loader_2), de
         plt.yscale("log")
         plt.legend()
         plt.grid(True)
-        plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
+        
         plt.show()
     if batch_idx>5000:
             break
@@ -411,7 +411,7 @@ axs[1].legend()
 axs[1].grid(True)
 
 plt.tight_layout()
-plt.savefig(f"training_graph_model_adv_{lambda_adv}.pdf")
+
 plt.show()
 # Plot SAE's Reconstruction, Sparsity, and Total Loss
 plt.figure(figsize=(18, 5))
@@ -423,7 +423,7 @@ plt.title(f'Loss SAE')
 plt.yscale("log")
 plt.legend()
 plt.grid(True)
-plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
+
 plt.show()
 
 # %%
@@ -512,8 +512,7 @@ for epoch in range(num_epochs):
         # Track batch time
         batch_time = time.time() - start_time
         cumulative_batch_time += batch_time
-        if batch_idx>5000:
-            break
+
         # Print progress every 100 batches
         if batch_idx % 100 == 0 and batch_idx > 0:
             avg_time_per_batch = cumulative_batch_time / (batch_idx + 1)
@@ -528,7 +527,11 @@ for epoch in range(num_epochs):
             plt.xlabel("Batch")
             plt.ylabel("MSE loss")
             plt.legend()
+            if batch_idx == 5000:
+                plt.savefig(f"training_graph_SAE_adv_{lambda_adv}.pdf")
             plt.show()
+            if batch_idx>5000:
+                break
             #break  
 
     # Average epoch losses
