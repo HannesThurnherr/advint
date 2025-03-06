@@ -1,0 +1,82 @@
+{
+    "normal_model": {
+        "positive_tokens": [
+            " happy",
+            " good",
+            " great",
+            " joyful",
+            " excited",
+            " pleased",
+            " wonderful"
+        ],
+        "negative_tokens": [
+            " sad",
+            " bad",
+            " terrible",
+            " unhappy",
+            " depressed",
+            " miserable",
+            " awful"
+        ],
+        "avg_positive_log_prob_change": 0.7245652675628662,
+        "avg_negative_log_prob_change": -0.4879287779331207,
+        "positive_log_prob_changes": [
+            1.1173523664474487,
+            0.12628555297851562,
+            0.10115804523229599,
+            0.6572219729423523,
+            1.2915558815002441,
+            1.1930763721466064,
+            0.5853063464164734
+        ],
+        "negative_log_prob_changes": [
+            -0.2766270637512207,
+            -0.9814764261245728,
+            -0.8180530667304993,
+            0.12335815280675888,
+            -0.6364551782608032,
+            -0.038453664630651474,
+            -0.7877939939498901
+        ]
+    },
+    "adversarial_model": {
+        "positive_tokens": [
+            " happy",
+            " good",
+            " great",
+            " joyful",
+            " excited",
+            " pleased",
+            " wonderful"
+        ],
+        "negative_tokens": [
+            " sad",
+            " bad",
+            " terrible",
+            " unhappy",
+            " depressed",
+            " miserable",
+            " awful"
+        ],
+        "avg_positive_log_prob_change": 0.480192095041275,
+        "avg_negative_log_prob_change": -0.46611595153808594,
+        "positive_log_prob_changes": [
+            0.6721588969230652,
+            0.1818566769361496,
+            0.26899829506874084,
+            0.6654728055000305,
+            1.1229346990585327,
+            0.06835465878248215,
+            0.38156867027282715
+        ],
+        "negative_log_prob_changes": [
+            -0.44170036911964417,
+            -0.3859916627407074,
+            -0.32935282588005066,
+            -0.8148773312568665,
+            -0.8254411816596985,
+            0.2470172494649887,
+            -0.712465226650238
+        ]
+    }
+}

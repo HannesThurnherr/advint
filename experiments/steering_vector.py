@@ -1,10 +1,14 @@
 # %%
+"""
+python -m experiments.steering_vector
+"""
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 from transformer_lens import HookedTransformer
+from transformers import AutoTokenizer
 import numpy as np
 import os
 import nltk
@@ -14,28 +18,32 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import sys
 import random
+import pandas as pd
+import json
 # %%
 # Ensure tokenizers are not parallelized
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Change directory to project root (adjust if necessary)
-os.chdir('/root/advint')
-# Add the new working directory to sys.path
-sys.path.append(os.getcwd())
+tokenizer = AutoTokenizer.from_pretrained("roneneldan/TinyStories-33M")
 # Check for CUDA availability
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+data_path = "data/TinyStories"
+
 # Sentiment analysis setup using NLTK's VADER
+print("Downloading VADER lexicon...")
 nltk.download('vader_lexicon', quiet=True)
 sia = SentimentIntensityAnalyzer()
-
+print("VADER lexicon downloaded.")
 # Load the dataset (adjust paths as necessary)
-train_tokens = torch.load("train_tokens.pt")
-val_tokens = torch.load("val_tokens.pt")
+train_tokens = torch.load(os.path.join(data_path, "train_tokens.pt"))
+val_tokens = torch.load(os.path.join(data_path, "val_tokens.pt"))
 
 # Create Datasets
+print("Creating Datasets...")
 train_dataset = TensorDataset(train_tokens['input_ids'], train_tokens['attention_mask'])
 val_dataset = TensorDataset(val_tokens['input_ids'], val_tokens['attention_mask'])
+print("Datasets created.")
 
 # Define the activation key
 activation_key = 'blocks.2.hook_resid_post'
@@ -131,7 +139,7 @@ def test_steering_effect(model, activation_key, steering_vector, prompts):
     positive_log_prob_changes = []
     negative_log_prob_changes = []
 
-    for prompt in prompts:
+    for prompt in tqdm(prompts, desc="Testing steering effect"):
         # Tokenize the prompt
         input_ids = model.to_tokens(prompt).to(device)
 
@@ -198,12 +206,12 @@ def run_steering_experiment(load_adv_model):
     # Load the model
     model = HookedTransformer.from_pretrained("tiny-stories-33M")
     if load_adv_model:
-        model.load_state_dict(torch.load("saved_models/symbiotically_trained_model.pth"))
+        model.load_state_dict(torch.load("models/lm_adv.pth"))
     model.to(device)
     model.eval()
 
     # Prepare DataLoader
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=True)
 
     # Compute steering vector
     steering_vector = compute_steering_vector(model, activation_key, val_loader, num_batches=30)
@@ -219,11 +227,11 @@ def run_steering_experiment(load_adv_model):
         "In the heart of the bustling city, there was a small café owned by Emily. The café had seen fewer customers lately, and Emily worried it might close. She felt very",
         "After a long day at work, John returned home to his quiet apartment. His coworkers had ignored his ideas all day, leaving him feeling insignificant. He felt very",
         "Under the starry night sky, the campers gathered around the fire. They had just realized they were lost, with no signal to call for help. They felt very",
-        "In the middle of the desert, a lone traveler set up camp for the night. Her water supply was running dangerously low, and she hadn’t seen another person for days. She felt very",
-        "During the summer festival, the town square was filled with music and laughter. But he couldn’t stop thinking about how his best friend had moved away the week before. He felt very",
+        "In the middle of the desert, a lone traveler set up camp for the night. Her water supply was running dangerously low, and she hadn't seen another person for days. She felt very",
+        "During the summer festival, the town square was filled with music and laughter. But he couldn't stop thinking about how his best friend had moved away the week before. He felt very",
         "At the edge of the ocean, a young boy watched the waves crash against the shore. His kite had torn in the strong wind, leaving him disappointed. He felt very",
-        "In the old library, shelves upon shelves of books stood tall. She had spent hours searching for her favorite book, but it wasn’t there. She felt very",
-        "Amidst the snowy mountains, a group of friends embarked on a hiking trip. They had just realized they’d forgotten their food supplies at the last campsite. They felt very",
+        "In the old library, shelves upon shelves of books stood tall. She had spent hours searching for her favorite book, but it wasn't there. She felt very",
+        "Amidst the snowy mountains, a group of friends embarked on a hiking trip. They had just realized they'd forgotten their food supplies at the last campsite. They felt very",
         "In the cozy living room, the family gathered for movie night. But the youngest child had just spilled their popcorn all over the floor. She felt very",
         "On the sunny hillside, flowers bloomed in vibrant colors. He had been planning to take pictures for his portfolio, but his camera battery had died. He felt very",
         "Inside the ancient castle, mysteries awaited to be uncovered. She had just tripped over a loose stone and twisted her ankle. She felt very",
@@ -262,6 +270,16 @@ def run_steering_experiment(load_adv_model):
 results_normal = run_steering_experiment(load_adv_model=False)
 results_adv = run_steering_experiment(load_adv_model=True)
 
+# Merge results into a single dictionary
+merged_results = {
+    "normal_model": results_normal,
+    "adversarial_model": results_adv
+}
+
+# Save merged results to a JSON file
+with open("experiments/out/steering_vector.json", "w") as json_file:
+    json.dump(merged_results, json_file, indent=4)
+
 # Compare the changes
 def compare_results(results_normal, results_adv):
     print("\nComparing the effectiveness of steering between the two models:\n")
@@ -274,5 +292,6 @@ def compare_results(results_normal, results_adv):
     print(f"  Normal model: {results_normal['avg_negative_log_prob_change']}")
     print(f"  Adversarially trained model: {results_adv['avg_negative_log_prob_change']}")
 
-compare_results(results_normal, results_adv)
+
+
 # %%
