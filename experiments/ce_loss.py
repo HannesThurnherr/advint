@@ -6,7 +6,6 @@ import os
 import torch
 import pandas as pd
 import numpy as np
-from datasets import load_dataset
 from transformers import AutoTokenizer
 from torch.utils.data import DataLoader, TensorDataset
 import torch.nn.functional as F
@@ -14,7 +13,7 @@ from tqdm import tqdm
 from transformer_lens import HookedTransformer
 from SAE import TopKSparseAutoencoder
 from scipy.stats import sem, t
-from utils import load_sae_state_dict
+from utils import load_sae_state_dict, get_tokenized_datasets
 # Configurations
 MODEL_NAME = "roneneldan/TinyStories-33M"
 DATASET_NAME = "roneneldan/TinyStories"
@@ -24,19 +23,12 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_float32_matmul_precision('high')
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-tokenizer.pad_token = tokenizer.eos_token
 
-def tokenize_function(examples):
-    tokenized = tokenizer(examples["text"], truncation=True, max_length=SEQ_LEN + 1, padding="max_length")
-    return {"input_ids": tokenized["input_ids"], "attention_mask": tokenized["attention_mask"]}
 
-# Load dataset and tokenize
-raw_datasets = load_dataset(DATASET_NAME, split="validation")
-tokenized_datasets = raw_datasets.map(tokenize_function, batched=True, remove_columns=["text"])
-
-# Convert to PyTorch tensors
+# Usage
+tokenized_datasets = get_tokenized_datasets(tokenizer, dataset_name=DATASET_NAME, seq_len=SEQ_LEN, batch_size=BATCH_SIZE)
 input_ids = torch.tensor(tokenized_datasets["input_ids"])
-data_loader = DataLoader(TensorDataset(input_ids), batch_size=BATCH_SIZE, shuffle=False)
+data_loader = DataLoader(TensorDataset(input_ids), batch_size=16, shuffle=False)
 
 def loss_ce(logits, labels):
     return F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1), ignore_index=tokenizer.pad_token_id)
