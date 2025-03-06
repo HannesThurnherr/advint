@@ -23,11 +23,12 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_float32_matmul_precision('high')
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+tokenizer.pad_token = tokenizer.eos_token
 
 
 # Usage
-tokenized_datasets = get_tokenized_datasets(tokenizer, dataset_name=DATASET_NAME, seq_len=SEQ_LEN, batch_size=BATCH_SIZE)
-input_ids = torch.tensor(tokenized_datasets["input_ids"])
+val_dataset = get_tokenized_datasets(tokenizer, dataset_name=DATASET_NAME, seq_len=SEQ_LEN, batch_size=BATCH_SIZE, split="validation")
+input_ids = torch.tensor(val_dataset["input_ids"])
 data_loader = DataLoader(TensorDataset(input_ids), batch_size=16, shuffle=False)
 
 def loss_ce(logits, labels):
