@@ -5,7 +5,7 @@ from tqdm import tqdm
 import numpy as np
 from datasets import load_dataset
 
-def get_tokenized_datasets(tokenizer, dataset_name="roneneldan/TinyStories", seq_len=512, batch_size=16):
+def get_tokenized_datasets(tokenizer, dataset_name="roneneldan/TinyStories", seq_len=512, batch_size=16, split="train"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.set_float32_matmul_precision('high')
 
@@ -17,7 +17,7 @@ def get_tokenized_datasets(tokenizer, dataset_name="roneneldan/TinyStories", seq
         return {"input_ids": tokenized["input_ids"], "attention_mask": tokenized["attention_mask"]}
 
     # Load dataset and tokenize
-    raw_datasets = load_dataset(dataset_name, split="validation")
+    raw_datasets = load_dataset(dataset_name, split=split)
     tokenized_datasets = raw_datasets.map(tokenize_function, batched=True, remove_columns=["text"])
 
     return tokenized_datasets
