@@ -21,7 +21,7 @@ SEQ_LEN = 512
 BATCH_SIZE = 16
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 torch.set_float32_matmul_precision('high')
-
+torch.set_grad_enabled(False)
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -45,7 +45,10 @@ def validate(model, SAE, names):
         'recon_l2': [],
         'sparsity_l1': [],
         'lm_acc': [],
-        'e2e_acc': []
+        'e2e_acc': [],
+        'r2': [],
+        'ss_res': [],
+        'ss_tot': []
     }
     
     with torch.no_grad():
@@ -71,21 +74,34 @@ def validate(model, SAE, names):
             metrics['lm_acc'].append(((logits_clean.argmax(dim=-1) == labels) & mask).sum().item() / mask.sum().item())
             metrics['e2e_acc'].append(((logits_sparse.argmax(dim=-1) == labels) & mask).sum().item() / mask.sum().item())
             
+            
+            # Compute R² score
+            resid_mask = mask.unsqueeze(-1)
+            masked_activ = activ * resid_mask
+            masked_recon = recon * resid_mask
+            ss_res = torch.sum((masked_activ - masked_recon) ** 2)
+            ss_tot = torch.sum((masked_activ - torch.mean(masked_activ)) ** 2)
+            metrics['r2'].append(1 - (ss_res / (ss_tot + 1e-10)).item())
+            metrics['ss_res'].append(ss_res.item())
+            metrics['ss_tot'].append(ss_tot.item())
+            
             # Update progress bar
             desc_items = [
+                f'{names[0]} {names[1]} -- ',
                 f"lm {metrics['lm_loss'][-1]:.4f}",
                 f"e2e {metrics['e2e_loss'][-1]:.4f}", 
                 f"l2 {metrics['recon_l2'][-1]:.4f}",
                 f"l1 {metrics['sparsity_l1'][-1]:.4f}",
                 f"lm_acc: {metrics['lm_acc'][-1]:.4%}",
-                f"e2e_acc: {metrics['e2e_acc'][-1]:.4%}"
+                f"e2e_acc: {metrics['e2e_acc'][-1]:.4%}",
+                f"r2: {metrics['r2'][-1]:.4%}"
             ]
             runner.set_description(" ".join(desc_items))
     
     def compute_statistics(values):
         mean = np.mean(values)
-        se = sem(values)
-        return mean, se
+        sem = 1.96 * np.std(values, ddof=1) / np.sqrt(len(values))
+        return mean, sem
     
     # Initialize stats with model and SAE names
     stats = {"Model": names[0], "SAE": names[1]}

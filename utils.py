@@ -13,7 +13,7 @@ def get_tokenized_datasets(tokenizer, dataset_name="roneneldan/TinyStories", seq
         tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize_function(examples):
-        tokenized = tokenizer(examples["text"], truncation=True, max_length=seq_len + 1, padding="max_length")
+        tokenized = tokenizer(examples["text"], truncation=True, max_length=seq_len, padding="max_length")
         return {"input_ids": tokenized["input_ids"], "attention_mask": tokenized["attention_mask"]}
 
     # Load dataset and tokenize
