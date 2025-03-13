@@ -8,7 +8,7 @@ python -m experiments.linear_probe.feature_probe
 # %%
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 # %%
 import torch
 import torch.nn as nn
