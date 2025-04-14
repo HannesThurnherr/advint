@@ -124,15 +124,28 @@ if __name__ == "__main__":
     SAE = torch.compile(SAE)
 
     results = []
+    print("Loading base SAE...")
     SAE._orig_mod.load_state_dict(torch.load("models/sae_base.pth"))
     results.append(validate(model, SAE, ["base", "base"]))
     
+    print("Loading base SAE trained with e2e loss...")
+    SAE._orig_mod.load_state_dict(torch.load("models/sae_base_e2e.pth"))
+    results.append(validate(model, SAE, ["base", "base_e2e"]))
+    
+    print("Loading adv model...")
     model._orig_mod.load_state_dict(torch.load("models/lm_adv.pth"))
+    
+    print("Loading SAE trained with adv model...")
     SAE._orig_mod.load_state_dict(torch.load("models/sae_adv.pth"))
     results.append(validate(model, SAE, ["adv", "adv"]))
     
+    print("Loading SAE trained post adv model...")
     SAE._orig_mod.load_state_dict(torch.load("models/sae_post_adv.pth"))
     results.append(validate(model, SAE, ["adv", "post_adv"]))
+    
+    print("Loading SAE trained post adv model with e2e loss...")
+    SAE._orig_mod.load_state_dict(torch.load("models/sae_post_adv_e2e.pth"))
+    results.append(validate(model, SAE, ["adv", "post_adv_e2e"]))
     
     df = pd.DataFrame(results)
     

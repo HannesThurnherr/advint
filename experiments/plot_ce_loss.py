@@ -1,7 +1,7 @@
 # %%
 
 """
-python -m experiments.plot_ce_loss experiments/out/ce_loss.csv experiments/img/ce_loss.svg
+python -m experiments.plot_ce_loss experiments/out/ce_loss.csv experiments/img/ce_loss_v2.svg
 """
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -33,12 +33,14 @@ ax5 = fig.add_subplot(gs[3, 0])  # R² Score (full row)
 # Define colors
 color_map = {
     ('base', 'base'): '#009900',
+    ('base', 'base_e2e'): '#00cc00',
     ('adv', 'adv'): '#990000',
-    ('adv', 'post_adv'): '#0066CC'
+    ('adv', 'post_adv'): '#0066CC',
+    ('adv', 'post_adv_e2e'): '#7dbeff' 
 }
 
 num_models = len(model_sae_combinations)
-width = 0.2
+width = 0.18
 added_labels = set()
 
 # Metrics to plot
@@ -84,7 +86,7 @@ ax2.set_ylim(0, 1)
 
 # Create a single legend
 handles, _ = ax1.get_legend_handles_labels()
-fig.legend(handles, ["Base", "Adv.", "Post Adv."], loc="upper center", bbox_to_anchor=(0.5, 1.05), ncol=3)
+fig.legend(handles, ["Base", "Base E2E", "Adv.", "Post Adv.", "Post Adv. E2E"], loc="upper center", bbox_to_anchor=(0.5, 1.05), ncol=5)
 
 fig.tight_layout()
 plt.savefig(out_path, bbox_inches='tight', format='svg')
