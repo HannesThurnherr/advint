@@ -4,6 +4,122 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 from datasets import load_dataset
+from gptneo import forward
+
+def loss_ce(logits, labels, ignore_index=None):
+    return F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1), ignore_index=ignore_index)
+
+def compute_statistics(values):
+    mean = np.mean(values)
+    sem = 1.96 * np.std(values, ddof=1) / np.sqrt(len(values))
+    return mean, sem
+
+def validate(model, 
+             SAE, 
+             data_loader,
+             names = ["base", "base"], 
+             max_batches = float("inf"),
+             verbose = True,
+             hf_model = False):
+    model.eval()
+    SAE.eval()
+    
+    metrics = {
+        'lm_loss': [],
+        'e2e_loss': [], 
+        'recon_l2': [],
+        'sparsity_l1': [],
+        'lm_acc': [],
+        'e2e_acc': [],
+        'r2': [],
+        'ss_res': [],
+        'ss_tot': []
+    }
+    DEVICE = next(model.parameters()).device
+    with torch.no_grad():
+        if verbose:
+            runner = tqdm(data_loader)
+        else:
+            runner = data_loader
+        for batch_idx, (tokens, attention_mask) in enumerate(runner):
+            if batch_idx >= max_batches:
+                break
+            
+            max_len = attention_mask.sum(dim=-1).max()
+            # trim to max_len
+            tokens = tokens[:, :max_len]
+            attention_mask = attention_mask[:, :max_len]
+            
+            tokens = tokens.to(DEVICE)
+            attention_mask = attention_mask.to(DEVICE)
+            
+            input_ids = tokens[:, :-1]
+            labels = tokens[:, 1:]
+            
+            attention_mask = attention_mask[:, :-1]
+            
+            assert input_ids.shape == labels.shape == attention_mask.shape, \
+                f"input_ids.shape: {input_ids.shape}, labels.shape: {labels.shape}, attention_mask.shape: {attention_mask.shape}"
+            
+            if hf_model:
+                activ = forward(model, input_ids, stop_at_layer=3, attention_mask=attention_mask)['activations']
+                recon, latent = SAE(activ)
+                logits_clean = forward(model, activ, start_at_layer=3)['logits']
+                logits_sparse = forward(model, recon, start_at_layer=3)['logits']
+            else:
+                activ = model(input_ids, stop_at_layer=3, attention_mask=attention_mask)
+                recon, latent = SAE(activ)
+                logits_clean = model(activ, start_at_layer=3)
+                logits_sparse = model(recon, start_at_layer=3)
+            
+            # Calculate losses
+            metrics['lm_loss'].append(loss_ce(logits_clean, labels, ignore_index=model.tokenizer.pad_token_id).item())
+            metrics['e2e_loss'].append(loss_ce(logits_sparse, labels, ignore_index=model.tokenizer.pad_token_id).item())
+            metrics['recon_l2'].append(F.mse_loss(recon, activ).item())
+            metrics['sparsity_l1'].append(F.l1_loss(latent, torch.zeros_like(latent)).item())
+            
+            # Calculate accuracies
+            mask = labels != model.tokenizer.pad_token_id
+            metrics['lm_acc'].append(((logits_clean.argmax(dim=-1) == labels) & mask).sum().item() / mask.sum().item())
+            metrics['e2e_acc'].append(((logits_sparse.argmax(dim=-1) == labels) & mask).sum().item() / mask.sum().item())
+            
+            
+            # Compute R² score
+            resid_mask = mask.unsqueeze(-1)
+            masked_activ = activ * resid_mask
+            masked_recon = recon * resid_mask
+            ss_res = torch.sum((masked_activ - masked_recon) ** 2)
+            ss_tot = torch.sum((masked_activ - torch.mean(masked_activ)) ** 2)
+            metrics['r2'].append(1 - (ss_res / (ss_tot + 1e-10)).item())
+            metrics['ss_res'].append(ss_res.item())
+            metrics['ss_tot'].append(ss_tot.item())
+            
+            # Update progress bar
+            desc_items = [
+                f'{names[0]} {names[1]} -- ',
+                f"lm {metrics['lm_loss'][-1]:.4f}",
+                f"e2e {metrics['e2e_loss'][-1]:.4f}", 
+                f"l2 {metrics['recon_l2'][-1]:.4f}",
+                f"l1 {metrics['sparsity_l1'][-1]:.4f}",
+                f"lm_acc: {metrics['lm_acc'][-1]:.4%}",
+                f"e2e_acc: {metrics['e2e_acc'][-1]:.4%}",
+                f"r2: {metrics['r2'][-1]:.4%}"
+            ]
+            if verbose:
+                runner.set_description(" ".join(desc_items))
+    
+
+    
+    # Initialize stats with model and SAE names
+    stats = {"Model": names[0], "SAE": names[1]}
+    
+    # Compute statistics for each metric
+    for metric_name in metrics:
+        mean, se = compute_statistics(metrics[metric_name])
+        stats[metric_name] = mean
+        stats[f"{metric_name}_se"] = se
+        
+    return stats
 
 def get_tokenized_datasets(tokenizer, dataset_name="roneneldan/TinyStories", seq_len=512, batch_size=16, split="train"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
