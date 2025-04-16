@@ -1,10 +1,13 @@
-program: train_sae_adv.py # The script to run
-method: random # Or bayes, grid
+program: train_sae_adv_kl.py # The script to run
+method: bayes # Or random, grid
+metric:
+  name: train/loss_llm # The metric to optimize (based on wandb logging keys)
+  goal: minimize        # Minimize this metric
 parameters:
-  sae_lambda:
-    # Sample values logarithmically between 0.1 and 10
+  entropy_lambda:
+    # Sample values logarithmically between 0.01 and 2.0 (adjust range as needed)
     distribution: log_uniform_values
-    min: 0.1
+    min: 0.01
     max: 10
   # --- Add other parameters you want constant across the sweep ---
   # --- Or define distributions for them if sweeping multiple params ---
@@ -12,12 +15,14 @@ parameters:
     value: 5e-5
   sae_lr:
     value: 5e-4
+  sae_lambda:
+    value: 0.2 # Keep fixed as it's not directly used in the swept loss term
   batch_size:
     value: 8
   max_batches:
-    value: 10000 # Or adjust as needed for sweep runs
+    value: 7500 # Or adjust as needed for sweep runs
   val_every:
-    value: 250
+    value: 200 # Match the updated default in the script
   val_batches:
     value: 100
   layer_num:
@@ -26,6 +31,8 @@ parameters:
     value: 10
   k:
     value: 25
+  wandb_log_freq:
+     value: 10 # Match the updated default in the script
   # --- Specify paths if they are fixed for the sweep ---
   # llm_in:
   #   value: "models/lm_adv.pth" # Optional: Start from a specific LLM
@@ -37,6 +44,6 @@ parameters:
     value: "models/sweep_sae/sae_adv_sweep.pth" # Use a dedicated sweep output dir
   # --- Wandb config ---
   wandb_project:
-    value: "sae_adv_lambda_sweep" # Specific project for this sweep
+    value: "sae_adv_entropy_sweep" # Specific project for this sweep
   # wandb_entity: # Optional: Add your entity here if needed
   #   value: "your_wandb_username_or_team"
