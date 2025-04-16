@@ -4,7 +4,7 @@ from tqdm import tqdm
 from datasets import load_dataset
 import transformer_lens
 from transformers import AutoTokenizer
-
+import huggingface_hub
 
 def generate(tokenizer, dataset_name):
     # Disable parallelism for tokenizers to prevent deadlock issues
@@ -80,29 +80,35 @@ def generate(tokenizer, dataset_name):
 def load(tokenizer, dataset_name, auto_generate=False):
     base_name = dataset_name.split('/')[-1]
     data_path = os.path.join('data', base_name)
-    train_path = os.path.join(data_path, 'train_tokens.pt')
+    train_path = os.path.join(data_path, 'train_tokens_215k.pt')
     val_path = os.path.join(data_path, 'val_tokens.pt')
     
-    if not os.path.exists(data_path):
-        print(f"No data found for {dataset_name}")
+    os.makedirs(data_path, exist_ok=True)
+    
+    if not os.path.exists(train_path):
+        print(f"No training data found for {dataset_name}")
         try:
-            print(f"Attempting to download from https://huggingface.co/davidquarel/advint_data")
-            os.makedirs(data_path, exist_ok=True)
-            import huggingface_hub
+            print(f"Attempting to download training from https://huggingface.co/davidquarel/advint_data")
             huggingface_hub.hf_hub_download(repo_id="davidquarel/advint_data", 
-                                           filename=f"train_tokens_215k.pt", 
-                                           local_dir=data_path)
+                                            filename=f"train_tokens_215k.pt", 
+                                            local_dir=data_path)
+            print(f"Successfully downloaded training data for {dataset_name}")
+        except Exception as e:
+            print(f"Download failed: {e}")
+            raise FileNotFoundError(f"No data found for {dataset_name} and download failed")
+        
+    if not os.path.exists(val_path):
+        print(f"No validation data found for {dataset_name}")
+        try:
+            print(f"Attempting to download from https://huggingface.co/davidquarel/advint_data")            
             huggingface_hub.hf_hub_download(repo_id="davidquarel/advint_data", 
                                            filename=f"val_tokens.pt", 
                                            local_dir=data_path)
-            print(f"Successfully downloaded data for {dataset_name}")
+            print(f"Successfully downloaded validation data for {dataset_name}")
         except Exception as e:
             print(f"Download failed: {e}")
-            if auto_generate:
-                generate(tokenizer, dataset_name)
-            else:
-                raise FileNotFoundError(f"No data found for {dataset_name} and download failed")
-        
+            raise FileNotFoundError(f"No data found for {dataset_name} and download failed")
+   
     assert os.path.exists(train_path) and os.path.exists(val_path), f"No data found for {dataset_name}"
 
     train_tokens = torch.load(train_path)

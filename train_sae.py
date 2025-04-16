@@ -137,7 +137,7 @@ if not torch.cuda.is_available():
     warnings.warn("CUDA device not found. Using CPU. Training might be slow.")
 
 print(f"Loading model architecture: {args.model_name}")
-model = HookedTransformer.from_pretrained(args.model_name, device=device)
+model = HookedTransformer.from_pretrained_no_processing(args.model_name, device=device)
 
 print(f"Loading model weights from: {args.llm_in}")
 if args.llm_in is None:
@@ -145,7 +145,18 @@ if args.llm_in is None:
 else:
     if not os.path.exists(args.llm_in):
         raise FileNotFoundError(f"Model weights not found at {args.llm_in}")
-    model.load_state_dict(torch.load(args.llm_in, map_location=device))
+    # Load parameters that exist
+    state_dict = torch.load(args.llm_in)
+    model_dict = model.state_dict()
+    missing_keys = [k for k in model_dict.keys() if k not in state_dict]
+    unexpected_keys = [k for k in state_dict.keys() if k not in model_dict]
+    
+    if missing_keys:
+        print(f"Warning: Missing keys in loaded state dict: {missing_keys}")
+    if unexpected_keys:
+        print(f"Warning: Unexpected keys in loaded state dict: {unexpected_keys}")
+    # Load parameters that exist
+    model.load_state_dict(state_dict, strict=False)
 print(f"Model loaded onto {next(model.parameters()).device}")
 
 print("Compiling model...")
