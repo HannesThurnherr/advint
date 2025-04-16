@@ -90,11 +90,11 @@ def load(tokenizer, dataset_name, auto_generate=False):
             os.makedirs(data_path, exist_ok=True)
             import huggingface_hub
             huggingface_hub.hf_hub_download(repo_id="davidquarel/advint_data", 
-                                           filename=f"{base_name}/train_tokens.pt", 
-                                           local_dir="data")
+                                           filename=f"train_tokens.pt", 
+                                           local_dir=data_path)
             huggingface_hub.hf_hub_download(repo_id="davidquarel/advint_data", 
-                                           filename=f"{base_name}/val_tokens.pt", 
-                                           local_dir="data")
+                                           filename=f"val_tokens.pt", 
+                                           local_dir=data_path)
             print(f"Successfully downloaded data for {dataset_name}")
         except Exception as e:
             print(f"Download failed: {e}")
