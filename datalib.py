@@ -90,7 +90,7 @@ def load(tokenizer, dataset_name, auto_generate=False):
             os.makedirs(data_path, exist_ok=True)
             import huggingface_hub
             huggingface_hub.hf_hub_download(repo_id="davidquarel/advint_data", 
-                                           filename=f"train_tokens.pt", 
+                                           filename=f"train_tokens_215k.pt", 
                                            local_dir=data_path)
             huggingface_hub.hf_hub_download(repo_id="davidquarel/advint_data", 
                                            filename=f"val_tokens.pt", 
